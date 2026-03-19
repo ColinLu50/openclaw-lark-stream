@@ -110,6 +110,9 @@ export class StreamingCardController {
     isReasoningPhase: false,
   };
 
+  // ---- Tool call tracking ----
+  private activeToolName: string | null = null;
+
   // ---- Sub-controllers ----
   private readonly flush: FlushController;
   private readonly guard: UnavailableGuard;
@@ -292,15 +295,37 @@ export class StreamingCardController {
     }
     const answerText = split.answerText ?? text;
 
+    // Clear tool indicator when new content arrives
+    this.activeToolName = null;
+
     // 累积 deliver 文本用于最终卡片
     this.text.completedText += (this.text.completedText ? '\n\n' : '') + answerText;
 
-    // 没有流式数据时，用 deliver 文本显示在卡片上
-    if (!this.text.lastPartialText && !this.text.streamingPrefix) {
-      this.text.accumulatedText += (this.text.accumulatedText ? '\n\n' : '') + answerText;
-      this.text.streamingPrefix = this.text.accumulatedText;
-      await this.throttledCardUpdate();
-    }
+    // 每次 deliver 都更新显示文本并刷新卡片
+    this.text.accumulatedText = this.text.completedText;
+    this.text.streamingPrefix = this.text.completedText;
+    this.text.lastPartialText = '';
+    await this.throttledCardUpdate();
+  }
+
+  async onToolStart(payload: { name?: string; phase?: string }): Promise<void> {
+    if (!this.shouldProceed('onToolStart')) return;
+
+    const toolName = payload.name ?? 'unknown';
+    log.debug('onToolStart', { toolName, phase: payload.phase });
+    this.activeToolName = toolName;
+
+    await this.ensureCardCreated();
+    if (!this.shouldProceed('onToolStart.postCreate')) return;
+    if (!this.cardKit.cardMessageId) return;
+
+    // Update display to show tool indicator (without modifying completedText)
+    this.text.accumulatedText = this.text.completedText
+      ? this.text.completedText + `\n\n🔧 *Calling tool: \`${toolName}\`...*`
+      : `🔧 *Calling tool: \`${toolName}\`...*`;
+    this.text.streamingPrefix = this.text.accumulatedText;
+    this.text.lastPartialText = '';
+    await this.throttledCardUpdate();
   }
 
   async onReasoningStream(payload: ReplyPayload): Promise<void> {

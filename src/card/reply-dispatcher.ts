@@ -58,7 +58,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
   const useStreamingCards = replyMode === 'streaming';
 
   // ---- Block streaming for static mode ----
-  const enableBlockStreaming = feishuCfg?.blockStreaming === true && !useStreamingCards;
+  const enableBlockStreaming = feishuCfg?.blockStreaming === true;
 
   const resolvedFooter = resolveFooterConfig(feishuCfg?.footer);
 
@@ -312,6 +312,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
         ? {
             onReasoningStream: (payload: ReplyPayload) => controller.onReasoningStream(payload),
             onPartialReply: (payload: ReplyPayload) => controller.onPartialReply(payload),
+            onToolStart: (payload: { name?: string; phase?: string }) => controller.onToolStart(payload),
           }
         : {}),
     },
