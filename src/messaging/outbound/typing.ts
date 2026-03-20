@@ -44,10 +44,15 @@ export interface TypingIndicatorState {
 /**
  * The emoji type used to represent the typing indicator.
  *
- * "Typing" is a built-in Feishu emoji that shows a pencil / keyboard
- * animation, making it a natural choice for a typing cue.
+ * "OnIt" is a built-in Feishu emoji indicating the bot is working on
+ * the request.
  */
-const TYPING_EMOJI_TYPE = 'Typing';
+const TYPING_EMOJI_TYPE = 'OnIt';
+
+/**
+ * The emoji type used to indicate the reply is complete.
+ */
+const DONE_EMOJI_TYPE = 'DONE';
 
 // ---------------------------------------------------------------------------
 // addTypingIndicator
@@ -170,6 +175,53 @@ export async function removeTypingIndicator(params: {
     // is deleted or the reaction is manually removed.
     log.debug(`Failed to remove typing indicator`, {
       messageId: state.messageId,
+      error: error instanceof Error ? error.message : error,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// addDoneIndicator
+// ---------------------------------------------------------------------------
+
+/**
+ * Add a "Done" reaction to a message to indicate the reply is complete.
+ *
+ * Like typing indicators, errors are silently caught to avoid disrupting
+ * message processing.
+ */
+export async function addDoneIndicator(params: {
+  cfg: OpenClawConfig;
+  messageId: string;
+  accountId?: string;
+}): Promise<void> {
+  const { cfg, messageId, accountId } = params;
+  const normalizedId = normalizeMessageId(messageId);
+
+  try {
+    const client = LarkClient.fromCfg(cfg, accountId).sdk;
+    await runWithMessageUnavailableGuard({
+      messageId: normalizedId,
+      operation: 'im.messageReaction.create(done)',
+      fn: () =>
+        client.im.messageReaction.create({
+          path: {
+            message_id: normalizedId,
+          },
+          data: {
+            reaction_type: {
+              emoji_type: DONE_EMOJI_TYPE,
+            },
+          },
+        }),
+    });
+  } catch (error) {
+    if (isMessageUnavailableError(error)) {
+      log.debug(`Skip add done indicator for unavailable message`, { messageId: normalizedId });
+      return;
+    }
+    log.debug(`Failed to add done indicator`, {
+      messageId,
       error: error instanceof Error ? error.message : error,
     });
   }

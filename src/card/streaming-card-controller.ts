@@ -22,7 +22,7 @@ import {
   updateCardKitCard,
   setCardStreamingMode,
 } from './cardkit';
-import { buildCardContent, splitReasoningText, stripReasoningTags, STREAMING_ELEMENT_ID, toCardKit2 } from './builder';
+import { buildCardContent, formatElapsed, splitReasoningText, stripReasoningTags, STREAMING_ELEMENT_ID, toCardKit2, type ToolCallInfo } from './builder';
 import { optimizeMarkdownStyle } from './markdown-style';
 import { ImageResolver } from './image-resolver';
 import { registerShutdownHook } from '../core/shutdown-hooks';
@@ -111,7 +111,7 @@ export class StreamingCardController {
   };
 
   // ---- Tool call tracking ----
-  private activeToolName: string | null = null;
+  private toolCalls: ToolCallInfo[] = [];
 
   // ---- Sub-controllers ----
   private readonly flush: FlushController;
@@ -295,8 +295,8 @@ export class StreamingCardController {
     }
     const answerText = split.answerText ?? text;
 
-    // Clear tool indicator when new content arrives
-    this.activeToolName = null;
+    // Mark running tools as complete when new content arrives
+    this.completeRunningTools();
 
     // 累积 deliver 文本用于最终卡片
     this.text.completedText += (this.text.completedText ? '\n\n' : '') + answerText;
@@ -313,18 +313,21 @@ export class StreamingCardController {
 
     const toolName = payload.name ?? 'unknown';
     log.debug('onToolStart', { toolName, phase: payload.phase });
-    this.activeToolName = toolName;
+
+    // Mark any previously running tools as complete before starting a new one
+    this.completeRunningTools();
+
+    // Track this tool call
+    this.toolCalls.push({
+      name: toolName,
+      status: 'running',
+      startTime: Date.now(),
+    });
 
     await this.ensureCardCreated();
     if (!this.shouldProceed('onToolStart.postCreate')) return;
     if (!this.cardKit.cardMessageId) return;
 
-    // Update display to show tool indicator (without modifying completedText)
-    this.text.accumulatedText = this.text.completedText
-      ? this.text.completedText + `\n\n🔧 *Calling tool: \`${toolName}\`...*`
-      : `🔧 *Calling tool: \`${toolName}\`...*`;
-    this.text.streamingPrefix = this.text.accumulatedText;
-    this.text.lastPartialText = '';
     await this.throttledCardUpdate();
   }
 
@@ -401,8 +404,17 @@ export class StreamingCardController {
           ? `${this.text.accumulatedText}\n\n---\n**Error**: An error occurred while generating the response.`
           : '**Error**: An error occurred while generating the response.';
         const errorText = this.imageResolver.resolveImages(rawErrorText);
+        // Mark any running tools as error
+        for (const tc of this.toolCalls) {
+          if (tc.status === 'running') {
+            tc.status = 'error';
+            tc.durationMs = tc.startTime ? Date.now() - tc.startTime : 0;
+          }
+        }
+
         const errorCard = buildCardContent('complete', {
           text: errorText,
+          toolCalls: this.toolCalls,
           reasoningText: this.reasoning.accumulatedReasoningText || undefined,
           reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
           elapsedMs: this.elapsed(),
@@ -470,8 +482,12 @@ export class StreamingCardController {
 
         const resolvedDisplayText = await this.imageResolver.resolveImagesAwait(displayText, 15_000);
 
+        // Mark any remaining running tools as complete before final card
+        this.completeRunningTools();
+
         const completeCard = buildCardContent('complete', {
           text: resolvedDisplayText,
+          toolCalls: this.toolCalls,
           reasoningText: this.reasoning.accumulatedReasoningText || undefined,
           reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
           elapsedMs: this.elapsed(),
@@ -532,12 +548,16 @@ export class StreamingCardController {
 
       if (this.cardCreationPromise) await this.cardCreationPromise;
 
+      // Mark running tools as aborted
+      this.completeRunningTools();
+
       const effectiveCardId = this.cardKit.cardKitCardId ?? this.cardKit.originalCardKitCardId;
       if (effectiveCardId) {
         const elapsedMs = Date.now() - this.dispatchStartTime;
         const abortText = this.imageResolver.resolveImages(this.text.accumulatedText || 'Aborted.');
         const abortCardContent = buildCardContent('complete', {
           text: abortText,
+          toolCalls: this.toolCalls,
           reasoningText: this.reasoning.accumulatedReasoningText || undefined,
           reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
           elapsedMs,
@@ -552,6 +572,7 @@ export class StreamingCardController {
         const abortText = this.imageResolver.resolveImages(this.text.accumulatedText || 'Aborted.');
         const abortCard = buildCardContent('complete', {
           text: abortText,
+          toolCalls: this.toolCalls,
           reasoningText: this.reasoning.accumulatedReasoningText || undefined,
           reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
           elapsedMs,
@@ -737,6 +758,7 @@ export class StreamingCardController {
         log.debug('flushCardUpdate: IM patch fallback');
         const card = buildCardContent('streaming', {
           text: this.reasoning.isReasoningPhase ? '' : resolvedText,
+          toolCalls: this.toolCalls,
           reasoningText: this.reasoning.isReasoningPhase ? this.reasoning.accumulatedReasoningText : undefined,
         });
         await updateCardFeishu({
@@ -771,12 +793,50 @@ export class StreamingCardController {
     }
   }
 
+  /**
+   * Mark all currently running tools as complete and compute their duration.
+   */
+  private completeRunningTools(): void {
+    const now = Date.now();
+    for (const tc of this.toolCalls) {
+      if (tc.status === 'running') {
+        tc.status = 'complete';
+        tc.durationMs = tc.startTime ? now - tc.startTime : 0;
+      }
+    }
+  }
+
+  /**
+   * Build tool status lines for embedding in streaming markdown.
+   */
+  private buildToolStatusText(): string {
+    if (this.toolCalls.length === 0) return '';
+    const lines = this.toolCalls.map((tc) => {
+      if (tc.status === 'running') {
+        return `🔄 ${tc.name}...`;
+      }
+      const icon = tc.status === 'complete' ? '✅' : '❌';
+      const dur = tc.durationMs != null ? ` (${formatElapsed(tc.durationMs)})` : '';
+      return `${icon} ${tc.name}${dur}`;
+    });
+    return lines.join('\n');
+  }
+
   private buildDisplayText(): string {
+    let display: string;
     if (this.reasoning.isReasoningPhase && this.reasoning.accumulatedReasoningText) {
       const reasoningDisplay = `💭 **Thinking...**\n\n${this.reasoning.accumulatedReasoningText}`;
-      return this.text.accumulatedText ? this.text.accumulatedText + '\n\n' + reasoningDisplay : reasoningDisplay;
+      display = this.text.accumulatedText ? this.text.accumulatedText + '\n\n' + reasoningDisplay : reasoningDisplay;
+    } else {
+      display = this.text.accumulatedText;
     }
-    return this.text.accumulatedText;
+
+    // Append tool status for CardKit streaming display
+    const toolStatus = this.buildToolStatusText();
+    if (toolStatus) {
+      display = display ? display + '\n\n---\n' + toolStatus : toolStatus;
+    }
+    return display;
   }
 
   private async throttledCardUpdate(): Promise<void> {

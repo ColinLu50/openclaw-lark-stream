@@ -22,7 +22,7 @@ import { resolveFooterConfig } from '../core/footer-config';
 import { LarkClient } from '../core/lark-client';
 import { larkLogger } from '../core/lark-logger';
 import { sendMessageFeishu, sendMarkdownCardFeishu } from '../messaging/outbound/send';
-import { addTypingIndicator, removeTypingIndicator, type TypingIndicatorState } from '../messaging/outbound/typing';
+import { addTypingIndicator, removeTypingIndicator, addDoneIndicator, type TypingIndicatorState } from '../messaging/outbound/typing';
 import { resolveReplyMode, expandAutoMode, shouldUseCard } from './reply-mode';
 import { StreamingCardController } from './streaming-card-controller';
 import { UnavailableGuard } from './unavailable-guard';
@@ -142,8 +142,15 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
       typingStopped = true;
       if (!typingState) return;
       await removeTypingIndicator({ cfg, state: typingState, accountId });
+      const doneMessageId = typingState.messageId;
       typingState = null;
       log.info('removed typing indicator reaction');
+
+      // Add a "Done" reaction to indicate the reply is complete
+      if (doneMessageId) {
+        await addDoneIndicator({ cfg, messageId: doneMessageId, accountId });
+        log.info('added done indicator reaction');
+      }
     },
     onStartError: (err) => {
       logTypingFailure({
