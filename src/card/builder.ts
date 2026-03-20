@@ -31,6 +31,8 @@ export interface ToolCallInfo {
   status: 'running' | 'complete' | 'error';
   args?: Record<string, unknown>;
   result?: string;
+  durationMs?: number;
+  startTime?: number;
 }
 
 export interface CardElement {
@@ -280,8 +282,12 @@ function buildStreamingCard(partialText: string, toolCalls: ToolCallInfo[], reas
   // Tool calls in progress
   if (toolCalls.length > 0) {
     const toolLines = toolCalls.map((tc) => {
-      const statusIcon = tc.status === 'running' ? '\ud83d\udd04' : tc.status === 'complete' ? '\u2705' : '\u274c';
-      return `${statusIcon} ${tc.name} - ${tc.status}`;
+      if (tc.status === 'running') {
+        return `🔄 ${tc.name}...`;
+      }
+      const statusIcon = tc.status === 'complete' ? '✅' : '❌';
+      const dur = tc.durationMs != null ? ` (${formatElapsed(tc.durationMs)})` : '';
+      return `${statusIcon} ${tc.name}${dur}`;
     });
     elements.push({
       tag: 'markdown',
@@ -354,17 +360,55 @@ function buildCompleteCard(params: {
     content: optimizeMarkdownStyle(text),
   });
 
-  // Tool calls summary
+  // Tool calls summary — collapsible panel (matches reasoning panel style)
   if (toolCalls.length > 0) {
-    const toolSummaryLines = toolCalls.map((tc) => {
-      const statusIcon = tc.status === 'complete' ? '\u2705' : '\u274c';
-      return `${statusIcon} **${tc.name}** - ${tc.status}`;
+    const totalMs = toolCalls.reduce((sum, tc) => sum + (tc.durationMs ?? 0), 0);
+    const totalDur = totalMs > 0 ? formatElapsed(totalMs) : '';
+
+    const zhHeader = totalDur
+      ? `🔧 ${toolCalls.length} 次工具调用 (${totalDur})`
+      : `🔧 ${toolCalls.length} 次工具调用`;
+    const enHeader = totalDur
+      ? `🔧 ${toolCalls.length} Tool Call${toolCalls.length > 1 ? 's' : ''} (${totalDur})`
+      : `🔧 ${toolCalls.length} Tool Call${toolCalls.length > 1 ? 's' : ''}`;
+
+    const toolDetailLines = toolCalls.map((tc) => {
+      const statusIcon = tc.status === 'complete' ? '✅' : '❌';
+      const dur = tc.durationMs != null ? formatElapsed(tc.durationMs) : '';
+      return dur ? `${statusIcon} **${tc.name}** ${dur}` : `${statusIcon} **${tc.name}**`;
     });
 
     elements.push({
-      tag: 'markdown',
-      content: toolSummaryLines.join('\n'),
-      text_size: 'notation',
+      tag: 'collapsible_panel',
+      expanded: false,
+      header: {
+        title: {
+          tag: 'markdown',
+          content: enHeader,
+          i18n_content: {
+            zh_cn: zhHeader,
+            en_us: enHeader,
+          },
+        },
+        vertical_align: 'center',
+        icon: {
+          tag: 'standard_icon',
+          token: 'down-small-ccm_outlined',
+          size: '16px 16px',
+        },
+        icon_position: 'follow_text',
+        icon_expanded_angle: -180,
+      },
+      border: { color: 'grey', corner_radius: '5px' },
+      vertical_spacing: '8px',
+      padding: '8px 8px 8px 8px',
+      elements: [
+        {
+          tag: 'markdown',
+          content: toolDetailLines.join('\n'),
+          text_size: 'notation',
+        },
+      ],
     });
   }
 
