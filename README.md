@@ -20,12 +20,15 @@
 
 ## 📦 安装
 
-需要 [OpenClaw](https://openclaw.ai)（>= 2026.2.26）和 Node.js（>= v22）。
+需要 [OpenClaw](https://openclaw.ai) 和 Node.js（>= v22）。
 
-> 查看 OpenClaw 版本：`openclaw -v`，如版本过低请先升级：
+> [!WARNING]
+> OpenClaw 新发布的 **3.22** 版本存在不兼容变更，飞书插件运行会出现异常，正在兼容中。预计 **3.24 日**兼容完成。
+> 请暂时使用 3.13 版本：
 > ```bash
-> npm install -g openclaw
+> npm install -g openclaw@2026.3.13
 > ```
+> 查看当前版本：`openclaw -v`
 
 ```bash
 npx -y @colinlu50/openclaw-lark-stream install
@@ -59,4 +62,4 @@ openclaw config set channels.feishu.footer.status false   # 隐藏完成状态
 
 ## 📄 许可证
 
-MIT — 与上游项目相同。
+MIT

@@ -74,8 +74,13 @@ function checkOpenClawVersion() {
   try {
     const ver = execSync("openclaw -v", { encoding: "utf8" }).trim();
     console.log(`OpenClaw version: ${ver}`);
+    if (!ver.includes("2026.3.13")) {
+      console.warn(`\n⚠️  This plugin is tested with OpenClaw 2026.3.13.`);
+      console.warn(`   Current version: ${ver}`);
+      console.warn(`   To install the compatible version: npm install -g openclaw@2026.3.13\n`);
+    }
   } catch {
-    console.error("❌ OpenClaw not found. Install it first: npm install -g openclaw");
+    console.error("❌ OpenClaw not found. Install it first: npm install -g openclaw@2026.3.13");
     process.exit(1);
   }
 }
