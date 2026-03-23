@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -42,13 +42,15 @@ if (subcommand === "install" || subcommand === "update") {
     cleanConfigReferences("openclaw-lark");
 
     console.log(`\nInstalling ${SELF_PACKAGE}...`);
-    execFileSync("openclaw", ["plugins", "install", SELF_PACKAGE], {
+    // Use execSync with shell so that .cmd shims are resolved on Windows
+    execSync(`openclaw plugins install ${SELF_PACKAGE}`, {
       stdio: "inherit",
     });
     console.log(`\n✅ ${SELF_PACKAGE} installed successfully.`);
     console.log("Run: openclaw gateway restart");
   } catch (error) {
-    console.error(`\n❌ Failed to install ${SELF_PACKAGE}. The bot config is preserved.`);
+    console.error(`\n❌ Failed to install ${SELF_PACKAGE}.`);
+    console.error(error.message || error);
     console.error("You can retry with: openclaw plugins install " + SELF_PACKAGE);
     process.exit(error.status ?? 1);
   }
