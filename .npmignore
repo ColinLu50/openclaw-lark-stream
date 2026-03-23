@@ -1,0 +1,16 @@
+# Source files (keep .d.ts declarations)
+*.ts
+!*.d.ts
+
+# Dev config
+tsconfig.json
+eslint.config.js
+.prettierrc.json
+.npmrc
+
+# GitHub / repo files
+.github/
+.git/
+scripts/
+CLA.md
+README.en.md
