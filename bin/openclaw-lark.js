@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync, execSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const SELF_PACKAGE = "@colinlu50/openclaw-lark-stream";
@@ -16,33 +16,26 @@ const args = process.argv.slice(2);
 const subcommand = args[0];
 
 // ── install / update ──
-// 1) Let @larksuite/openclaw-lark-tools run the full interactive setup
-//    (version check, bot config, gateway restart, etc.)
-// 2) Then swap the installed official code with our fork
+// 1) Clean existing plugin state so tools gets a fresh environment
+// 2) Let @larksuite/openclaw-lark-tools run the interactive setup (bot config)
+// 3) Clean again (tools installs official code), then install our fork
 if (subcommand === "install" || subcommand === "update") {
-  // Step 1: Run tools for interactive setup (installs official + configures bot)
-  // Don't exit on error — config is already saved, we still need to swap the code.
+  // Step 1: Clean existing state so tools doesn't choke on stale plugins
+  cleanPluginState();
+
+  // Step 2: Run tools for interactive setup (bot config, version check, etc.)
   const toolsArgs = args.slice();
   try {
     runTools(toolsArgs);
   } catch {
-    // Tools may fail on gateway restart etc. — that's OK, config is preserved.
+    // Tools may fail on gateway restart / interactive prompt — that's OK,
+    // bot config is already saved to openclaw.json at this point.
   }
 
-  // Step 2: Clean up old plugin dirs + config references, then install ours
+  // Step 3: Clean official plugin + any staging leftovers, install ours
+  cleanPluginState();
   try {
-    for (const dir of [OFFICIAL_DIR, SELF_DIR]) {
-      if (existsSync(dir)) {
-        console.log(`\nRemoving ${dir}...`);
-        rmSync(dir, { recursive: true, force: true });
-      }
-    }
-    // Remove stale "openclaw-lark" references from config so openclaw doesn't
-    // fail validation when the directory is gone.
-    cleanConfigReferences("openclaw-lark");
-
     console.log(`\nInstalling ${SELF_PACKAGE}...`);
-    // Use execSync with shell so that .cmd shims are resolved on Windows
     execSync(`openclaw plugins install ${SELF_PACKAGE}`, {
       stdio: "inherit",
     });
@@ -62,6 +55,39 @@ try {
   runTools(args);
 } catch (error) {
   process.exit(error.status ?? 1);
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Remove all plugin directories, staging leftovers, and stale config
+ * references so that openclaw has a clean state for the next install.
+ */
+function cleanPluginState() {
+  // Remove plugin directories
+  for (const dir of [OFFICIAL_DIR, SELF_DIR]) {
+    if (existsSync(dir)) {
+      console.log(`Removing ${dir}...`);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  // Remove leftover staging directories (.openclaw-install-stage-*)
+  if (existsSync(EXTENSIONS_DIR)) {
+    try {
+      for (const entry of readdirSync(EXTENSIONS_DIR)) {
+        if (entry.startsWith(".openclaw-install-stage-")) {
+          const p = join(EXTENSIONS_DIR, entry);
+          console.log(`Removing staging dir ${p}...`);
+          rmSync(p, { recursive: true, force: true });
+        }
+      }
+    } catch { /* ignore readdir errors */ }
+  }
+  // Clean config references for both plugin IDs
+  cleanConfigReferences("openclaw-lark");
+  cleanConfigReferences("openclaw-lark-stream");
 }
 
 /**
