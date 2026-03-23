@@ -97,7 +97,8 @@ async function configureBotIfNeeded() {
     console.log(`\nFound existing bot config (App ID: ${existing.appId}).`);
     const reuse = await ask("Use existing bot config? (Y/n): ");
     if (reuse.toLowerCase() !== "n") {
-      console.log("Keeping existing config.");
+      // Keep bot credentials but ensure streaming is enabled
+      ensureStreamingConfig(cfg);
       return;
     }
   }
@@ -148,6 +149,27 @@ async function configureBotIfNeeded() {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Ensure streaming is enabled on an existing config.
+ */
+function ensureStreamingConfig(cfg) {
+  if (!cfg.channels?.feishu) return;
+  let changed = false;
+  if (!cfg.channels.feishu.streaming) {
+    cfg.channels.feishu.streaming = true;
+    changed = true;
+  }
+  const rm = cfg.channels.feishu.replyMode || {};
+  if (rm.direct !== "streaming" || rm.group !== "streaming" || rm.default !== "streaming") {
+    cfg.channels.feishu.replyMode = { direct: "streaming", group: "streaming", default: "streaming" };
+    changed = true;
+  }
+  if (changed) {
+    writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2) + "\n", "utf8");
+    console.log("Enabled streaming mode for all reply modes.");
+  }
+}
 
 function ask(prompt) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });

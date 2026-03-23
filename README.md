@@ -43,7 +43,7 @@ npx -y @colinlu50/openclaw-lark-stream install
 
 ```bash
 cd ~/.openclaw/extensions
-git clone git@github.com:ColinLu50/openclaw-lark-stream.git openclaw-lark-stream
+git clone https://github.com/ColinLu50/openclaw-lark-stream.git openclaw-lark-stream
 cd openclaw-lark-stream && npm install && npm run build
 openclaw gateway restart
 ```
