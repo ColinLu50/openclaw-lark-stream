@@ -41,17 +41,15 @@ openclaw gateway restart
 
 ## Configuration
 
-Enable optional card footer metadata:
+The card footer shows elapsed time and completion status by default. To disable:
 
 ```bash
-openclaw config set channels.feishu.footer.elapsed true  # show elapsed time
-openclaw config set channels.feishu.footer.status true   # show completion status
+openclaw config set channels.feishu.footer.elapsed false  # hide elapsed time
+openclaw config set channels.feishu.footer.status false   # hide completion status
 ```
 
 - **elapsed** — displays total response time (e.g. `Elapsed 3.2s`) in the card footer
 - **status** — displays completion state (`Completed` / `Error` / `Stopped`) in the card footer
-
-Both default to hidden.
 
 ## License
 

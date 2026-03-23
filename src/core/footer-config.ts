@@ -17,12 +17,12 @@ import type { FeishuFooterConfig } from './types';
 /**
  * The default footer configuration.
  *
- * By default all metadata items are hidden — neither status text
- * ("已完成" / "出错" / "已停止") nor elapsed time are shown.
+ * By default both status text ("已完成" / "出错" / "已停止") and elapsed
+ * time are shown in the card footer.
  */
 export const DEFAULT_FOOTER_CONFIG: Required<FeishuFooterConfig> = {
-  status: false,
-  elapsed: false,
+  status: true,
+  elapsed: true,
 };
 
 // ---------------------------------------------------------------------------
