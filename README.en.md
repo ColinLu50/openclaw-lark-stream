@@ -2,6 +2,8 @@ English | [中文](./README.md)
 
 # OpenClaw Lark/Feishu Plugin — Stream Card Fork
 
+![demo](./demo.gif)
+
 Fork of the official [openclaw-larksuite](https://github.com/larksuite/openclaw-larksuite) plugin with **streaming block output** and **tool call indicators**.
 
 ## What's Changed

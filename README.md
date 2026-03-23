@@ -2,13 +2,15 @@
 
 # OpenClaw 飞书插件 — 流式卡片 Fork
 
+![demo](./demo.gif)
+
 基于官方 [openclaw-larksuite](https://github.com/larksuite/openclaw-larksuite) 插件的 Fork，支持**流式分块输出**和**工具调用状态展示**。
 
 ## 改动说明
 
 官方插件在 LLM 生成完一个 block 后才一次性推送结果。本 Fork 实现了：
 
-- **实时流式追加** — 每个 block 的内容在生成过程中逐步追加到流式卡片
+- **实时流式输出** — 每个 block 的内容在生成过程中逐步追加到流式卡片
 - **工具调用状态** — agent 调用工具时，卡片顶部实时显示当前工具，完成后自动折叠为摘要面板
 
 ## 安装
