@@ -1,5 +1,6 @@
 {
   "id": "openclaw-lark-stream",
+  "main": "./dist/index.js",
   "channels": ["feishu"],
   "skills": ["./skills"],
   "configSchema": {
