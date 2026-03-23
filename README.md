@@ -41,17 +41,15 @@ openclaw gateway restart
 
 ## 配置
 
-开启可选的卡片底栏元信息：
+卡片底栏默认显示耗时和完成状态，如需关闭：
 
 ```bash
-openclaw config set channels.feishu.footer.elapsed true  # 显示耗时
-openclaw config set channels.feishu.footer.status true   # 显示完成状态
+openclaw config set channels.feishu.footer.elapsed false  # 隐藏耗时
+openclaw config set channels.feishu.footer.status false   # 隐藏完成状态
 ```
 
 - **elapsed** — 卡片底栏显示总响应耗时（如 `耗时 3.2s`）
 - **status** — 卡片底栏显示完成状态（`已完成` / `出错` / `已停止`）
-
-两者默认不显示。
 
 ## 许可证
 
