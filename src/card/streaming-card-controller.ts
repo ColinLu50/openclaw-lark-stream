@@ -807,19 +807,13 @@ export class StreamingCardController {
   }
 
   /**
-   * Build tool status lines for embedding in streaming markdown.
+   * Build tool status line for embedding in streaming markdown.
+   * Only shows the currently running tool (previous tools are replaced).
    */
   private buildToolStatusText(): string {
-    if (this.toolCalls.length === 0) return '';
-    const lines = this.toolCalls.map((tc) => {
-      if (tc.status === 'running') {
-        return `🔄 ${tc.name}...`;
-      }
-      const icon = tc.status === 'complete' ? '✅' : '❌';
-      const dur = tc.durationMs != null ? ` (${formatElapsed(tc.durationMs)})` : '';
-      return `${icon} ${tc.name}${dur}`;
-    });
-    return lines.join('\n');
+    const running = this.toolCalls.find((tc) => tc.status === 'running');
+    if (!running) return '';
+    return `🔄 **${running.name}**...`;
   }
 
   private buildDisplayText(): string {
@@ -831,10 +825,10 @@ export class StreamingCardController {
       display = this.text.accumulatedText;
     }
 
-    // Append tool status for CardKit streaming display
+    // Prepend current tool status at the top of the display
     const toolStatus = this.buildToolStatusText();
     if (toolStatus) {
-      display = display ? display + '\n\n---\n' + toolStatus : toolStatus;
+      display = display ? toolStatus + '\n\n---\n' + display : toolStatus;
     }
     return display;
   }

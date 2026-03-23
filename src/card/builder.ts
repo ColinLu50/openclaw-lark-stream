@@ -260,6 +260,16 @@ function buildThinkingCard(): FeishuCard {
 function buildStreamingCard(partialText: string, toolCalls: ToolCallInfo[], reasoningText?: string): FeishuCard {
   const elements: CardElement[] = [];
 
+  // Show only the currently running tool at the top
+  const running = toolCalls.find((tc) => tc.status === 'running');
+  if (running) {
+    elements.push({
+      tag: 'markdown',
+      content: `🔄 **${running.name}**...`,
+      text_size: 'notation',
+    });
+  }
+
   if (!partialText && reasoningText) {
     // Reasoning phase: show reasoning content in notation style
     elements.push({
@@ -276,23 +286,6 @@ function buildStreamingCard(partialText: string, toolCalls: ToolCallInfo[], reas
     elements.push({
       tag: 'markdown',
       content: optimizeMarkdownStyle(partialText),
-    });
-  }
-
-  // Tool calls in progress
-  if (toolCalls.length > 0) {
-    const toolLines = toolCalls.map((tc) => {
-      if (tc.status === 'running') {
-        return `🔄 ${tc.name}...`;
-      }
-      const statusIcon = tc.status === 'complete' ? '✅' : '❌';
-      const dur = tc.durationMs != null ? ` (${formatElapsed(tc.durationMs)})` : '';
-      return `${statusIcon} ${tc.name}${dur}`;
-    });
-    elements.push({
-      tag: 'markdown',
-      content: toolLines.join('\n'),
-      text_size: 'notation',
     });
   }
 
@@ -354,13 +347,7 @@ function buildCompleteCard(params: {
     });
   }
 
-  // Full text content
-  elements.push({
-    tag: 'markdown',
-    content: optimizeMarkdownStyle(text),
-  });
-
-  // Tool calls summary — collapsible panel (matches reasoning panel style)
+  // Tool calls summary — collapsible panel at the top (after reasoning, before text)
   if (toolCalls.length > 0) {
     const totalMs = toolCalls.reduce((sum, tc) => sum + (tc.durationMs ?? 0), 0);
     const totalDur = totalMs > 0 ? formatElapsed(totalMs) : '';
@@ -411,6 +398,12 @@ function buildCompleteCard(params: {
       ],
     });
   }
+
+  // Full text content
+  elements.push({
+    tag: 'markdown',
+    content: optimizeMarkdownStyle(text),
+  });
 
   // Footer meta-info: each metadata item is independently controlled via
   // the `footer` config. Both status and elapsed default to hidden.
