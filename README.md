@@ -41,7 +41,31 @@ openclaw gateway restart
 
 ## ⚙️ 配置
 
-卡片底栏默认显示耗时和完成状态，如需关闭：
+### 流式输出
+
+安装后默认开启流式输出。如需关闭：
+
+```bash
+openclaw config set channels.feishu.streaming false
+openclaw config set channels.feishu.replyMode.direct card
+openclaw config set channels.feishu.replyMode.group card
+openclaw config set channels.feishu.replyMode.default card
+openclaw gateway restart
+```
+
+重新开启：
+
+```bash
+openclaw config set channels.feishu.streaming true
+openclaw config set channels.feishu.replyMode.direct streaming
+openclaw config set channels.feishu.replyMode.group streaming
+openclaw config set channels.feishu.replyMode.default streaming
+openclaw gateway restart
+```
+
+### 卡片底栏
+
+默认显示耗时和完成状态，如需关闭：
 
 ```bash
 openclaw config set channels.feishu.footer.elapsed false  # 隐藏耗时
