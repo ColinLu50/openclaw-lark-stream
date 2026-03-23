@@ -21,6 +21,11 @@
 
 需要 [OpenClaw](https://openclaw.ai)（>= 2026.2.26）和 Node.js（>= v22）。
 
+> 查看 OpenClaw 版本：`openclaw -v`，如版本过低请先升级：
+> ```bash
+> npm install -g openclaw
+> ```
+
 ```bash
 npx -y @colinlu50/openclaw-lark-stream install
 ```
