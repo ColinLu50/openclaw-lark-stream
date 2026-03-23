@@ -49,10 +49,13 @@ async function runInstall() {
   }
   console.log(`\n✅ Plugin installed successfully.`);
 
-  // 4. Bot configuration (interactive)
+  // 4. Ensure plugins.allow includes our plugin ID
+  ensurePluginAllowed("openclaw-lark-stream");
+
+  // 5. Bot configuration (interactive)
   await configureBotIfNeeded();
 
-  // 5. Restart gateway
+  // 6. Restart gateway
   console.log("\nRestarting gateway...");
   try {
     execSync("openclaw gateway restart", { stdio: "inherit" });
@@ -164,6 +167,20 @@ function readConfig() {
  * Remove all plugin directories, staging leftovers, and stale config
  * references so that openclaw has a clean state for the next install.
  */
+/**
+ * Ensure the plugin ID is in plugins.allow so openclaw doesn't warn.
+ */
+function ensurePluginAllowed(pluginId) {
+  const cfg = readConfig();
+  if (!cfg.plugins) cfg.plugins = {};
+  if (!Array.isArray(cfg.plugins.allow)) cfg.plugins.allow = [];
+  if (!cfg.plugins.allow.includes(pluginId)) {
+    cfg.plugins.allow.push(pluginId);
+    writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2) + "\n", "utf8");
+    console.log(`Added "${pluginId}" to plugins.allow.`);
+  }
+}
+
 function cleanPluginState() {
   for (const dir of [OFFICIAL_DIR, SELF_DIR]) {
     if (existsSync(dir)) {
