@@ -23,21 +23,12 @@
 需要 [OpenClaw](https://openclaw.ai) 和 Node.js（>= v22）。
 
 > [!WARNING]
-> OpenClaw 新发布的 **3.22** 版本存在不兼容变更，飞书插件运行会出现异常，正在兼容中。预计 **3.24 日**兼容完成。
-> 请暂时使用 3.13 版本：
-> ```bash
-> npm install -g openclaw@2026.3.13
-> ```
-> 查看当前版本：`openclaw -v`
+> - OpenClaw 新发布的 **3.22** 版本存在不兼容变更，飞书插件运行会出现异常，正在兼容中。预计 **3.24 日**兼容完成。请暂时使用 3.13 版本：`npm install -g openclaw@2026.3.13`（查看当前版本：`openclaw -v`）
+> - 因权限限制，**不支持阿里云 OpenClaw 套餐**环境，请使用自建服务器安装。
 
 ```bash
 npx -y @colinlu50/openclaw-lark-stream install
 ```
-
-> 如果之前安装过官方插件，先卸载：
-> ```bash
-> openclaw plugins uninstall openclaw-lark --force
-> ```
 
 ### 从源码安装（开发用）
 
