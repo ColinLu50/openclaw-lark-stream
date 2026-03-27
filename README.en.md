@@ -10,11 +10,13 @@ Based on the official [openclaw-lark](https://github.com/larksuite/openclaw-lark
 
 The official plugin delivers LLM block results all at once after completion. This version enables:
 
-- **Real-time streaming output** — each block's content is progressively appended to the streaming card as it's generated, in both DMs and group chats
-- **Agent execution visibility** — full transparency into the agent's reasoning and tool use, so you can monitor progress in real time
-  - While running: think content (DeepSeek-R1, Claude 3.7, etc.) streams live; active tool calls are shown at the top of the card
-  - On completion: all reasoning blocks and tool calls are collapsed into a "K tool calls" expandable panel in chronological order, preserving the full execution trace
-  - Footer: input/output token usage and context window percentage are shown by default
+- **Real-time streaming output** — each block's content is progressively appended to the Lark card as it's generated
+- **Group chat streaming** — streaming output works in group chats as well
+- **Agent execution visibility** — full transparency into the agent's reasoning and execution flow
+  - **Reasoning display** — think content from reasoning models (DeepSeek-R1, Claude 3.7, etc.) streams live
+  - **Tool call indicators** — when the agent calls a tool, the card shows the current tool name in real-time
+  - **Process panel** — on completion, all reasoning blocks and tool calls are collapsed into a single expandable panel in chronological order
+  - **Token usage** — the card footer shows input/output token counts and context window usage percentage by default
 
 ## 📢 News
 
