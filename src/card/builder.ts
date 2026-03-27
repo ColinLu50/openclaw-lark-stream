@@ -281,16 +281,17 @@ export function formatFooterRuntimeSegments(params: {
   }
 
   if (footer?.context && metrics) {
-    const freshTotal = metrics.totalTokensFresh === false ? undefined : metrics.totalTokens;
-    const total = typeof freshTotal === 'number' ? Math.max(0, freshTotal) : undefined;
+    // Use inputTokens as the "current context usage" estimate — same as WebUI.
+    // totalTokens/totalTokensFresh are unreliable (OpenClaw writes totalTokensFresh=false).
+    const used = typeof metrics.inputTokens === 'number' ? Math.max(0, metrics.inputTokens) : undefined;
     const ctx = typeof metrics.contextTokens === 'number' ? Math.max(0, metrics.contextTokens) : undefined;
-    if (total != null && ctx != null) {
-      const totalLabel = compactNumber(total);
-      const ctxLabel = compactNumber(ctx);
-      const pct = ctx > 0 ? Math.round((total / ctx) * 100) : 0;
+    if (used != null && ctx != null) {
+      const pct = ctx > 0 ? Math.round((used / ctx) * 100) : 0;
       if (verbose) {
-        zhParts.push(`上下文 ${totalLabel}/${ctxLabel} (${pct}%)`);
-        enParts.push(`Context ${totalLabel}/${ctxLabel} (${pct}%)`);
+        const usedLabel = compactNumber(used);
+        const ctxLabel = compactNumber(ctx);
+        zhParts.push(`上下文 ${usedLabel}/${ctxLabel} (${pct}%)`);
+        enParts.push(`Context ${usedLabel}/${ctxLabel} (${pct}%)`);
       } else {
         zhParts.push(`${pct}% ctx`);
         enParts.push(`${pct}% ctx`);

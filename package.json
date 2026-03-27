@@ -1,6 +1,6 @@
 {
   "name": "@colinlu50/openclaw-lark-stream",
-  "version": "260327.2.4",
+  "version": "260327.2.5",
   "description": "OpenClaw Lark/Feishu channel plugin",
   "main": "./dist/index.js",
   "type": "module",
