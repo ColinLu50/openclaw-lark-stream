@@ -94,6 +94,18 @@ openclaw gateway restart
 | `footer.cache` | ❌ off | Cache hit details (e.g. `Cache 18k/1k (94%)`) |
 | `footer.model` | ❌ off | Model name (e.g. `claude-3-7-sonnet`) |
 
+Default footer looks like:
+
+```
+Completed · Elapsed 8.3s · ↑ 19k ↓ 145 · 1% ctx
+```
+
+With all options enabled:
+
+```
+Completed · Elapsed 8.3s · ↑ 19k ↓ 145 · Cache 18k/1k (94%) · 10% ctx · claude-3-7-sonnet
+```
+
 Example — hide token counts, show model name:
 
 ```bash

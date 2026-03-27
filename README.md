@@ -94,6 +94,18 @@ openclaw gateway restart
 | `footer.cache` | ❌ 关 | 缓存命中详情（如 `缓存 18k/1k (94%)`） |
 | `footer.model` | ❌ 关 | 模型名称（如 `claude-3-7-sonnet`） |
 
+默认底栏效果：
+
+```
+已完成 · 耗时 8.3s · ↑ 19k ↓ 145 · 1% ctx
+```
+
+全部开启后：
+
+```
+已完成 · 耗时 8.3s · ↑ 19k ↓ 145 · 缓存 18k/1k (94%) · 上下文 19k/200k (10%) · claude-3-7-sonnet
+```
+
 示例 — 关闭 token 展示，开启模型名称：
 
 ```bash
