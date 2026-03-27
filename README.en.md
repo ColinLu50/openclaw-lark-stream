@@ -20,8 +20,12 @@ The official plugin delivers LLM block results all at once after completion. Thi
 
 ## 📢 News
 
-- **2026.3.27 v2** — Collapsed panels merged into a single "Process" panel; footer now shows token usage and context % by default
-- **2026.3.27 v1** — Compatible with OpenClaw >= 2026.3.22; added AskUserQuestion interactive tool; panels appear in chronological order; fixed card table limit error 230099
+- **2026.3.27**
+  - Compatible with OpenClaw >= 2026.3.22
+  - Added AskUserQuestion interactive tool
+  - Reasoning blocks and tool calls merged into a single expandable panel in chronological order
+  - Footer now shows token usage and context window percentage by default
+  - Fixed card table limit error 230099
 - **2026.3.23** — First release with real-time streaming output and tool call indicators (for OpenClaw < 2026.3.22, use the `0322` branch)
 
 ## 📦 Installation
