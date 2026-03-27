@@ -87,31 +87,43 @@ openclaw gateway restart
 
 | 配置项 | 默认 | 说明 |
 |--------|------|------|
-| `footer.verbose` | ❌ 关 | 详细模式：文字标签 + 自动开启 cache 和 model |
+| `footer.verbose` | ❌ 关 | 详细模式：各项改用文字标签展示 |
 | `footer.status` | ✅ 开 | 完成状态 |
 | `footer.elapsed` | ✅ 开 | 总响应耗时 |
 | `footer.tokens` | ✅ 开 | input / output token 数 |
 | `footer.context` | ✅ 开 | context window 使用率 |
-| `footer.cache` | ❌ 关 | 缓存命中详情（verbose 模式下默认开） |
-| `footer.model` | ❌ 关 | 模型名称（verbose 模式下默认开） |
+| `footer.cache` | ❌ 关 | 缓存命中（需单独开启） |
+| `footer.model` | ❌ 关 | 模型名称（需单独开启） |
 
-**默认（简要）：**
+`verbose` 只控制**展示格式**，各项的开关相互独立：
+
+| 项目 | 简要（默认） | 详细（verbose） |
+|------|------------|----------------|
+| status | `✅` / `❌` / `⏹` | `已完成` / `出错` / `已停止` |
+| elapsed | `8.3s` | `耗时 8.3s` |
+| context | `1% ctx` | `上下文 19k/200k (10%)` |
+| cache | `94% cache` | `缓存 18k/1k (94%)` |
+| tokens / model | 相同 | 相同 |
+
+默认效果：
 
 ```
 ✅ · 8.3s · ↑ 19k ↓ 145 · 1% ctx
 ```
 
-**详细模式（`footer.verbose true`）：**
-
-```
-已完成 · 耗时 8.3s · ↑ 19k ↓ 145 · 缓存 18k/1k (94%) · 上下文 19k/200k (10%) · claude-3-7-sonnet
-```
-
-开启详细模式：
+开启详细模式 + cache + model：
 
 ```bash
 openclaw config set channels.feishu.footer.verbose true
+openclaw config set channels.feishu.footer.cache true
+openclaw config set channels.feishu.footer.model true
 openclaw gateway restart
+```
+
+效果：
+
+```
+已完成 · 耗时 8.3s · ↑ 19k ↓ 145 · 缓存 18k/1k (94%) · 上下文 19k/200k (10%) · claude-3-7-sonnet
 ```
 
 示例 — 关闭 token 展示，开启模型名称：

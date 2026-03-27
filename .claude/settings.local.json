@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r install C:Users26996.openclawextensionsopenclaw-larksrc --include=*.js)",
+      "Bash(find C:Users26996.openclawextensionsopenclaw-larksrctools -type f -name *.js)",
+      "Read(//c/tmp/**)",
+      "Bash(npx -y @colinlu50/openclaw-lark-stream install)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(npm run:*)",
+      "Bash(npm pack:*)",
+      "Bash(npm publish:*)",
+      "Bash(openclaw plugins:*)",
+      "Bash(node -e \"const p=require\\(''C:/Users/26996/.openclaw/extensions/openclaw-lark-stream/package.json''\\);console.log\\(p.name, p.version\\)\")",
+      "Bash(npx -y @colinlu50/openclaw-lark-stream@2026.3.28 install)",
+      "Bash(openclaw -v)"
+    ]
+  }
+}

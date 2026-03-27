@@ -43,14 +43,13 @@ export const DEFAULT_FOOTER_CONFIG: Required<FeishuFooterConfig> = {
  */
 export function resolveFooterConfig(cfg?: FeishuFooterConfig): Required<FeishuFooterConfig> {
   if (!cfg) return { ...DEFAULT_FOOTER_CONFIG };
-  const verbose = cfg.verbose ?? DEFAULT_FOOTER_CONFIG.verbose;
   return {
-    verbose,
+    verbose: cfg.verbose ?? DEFAULT_FOOTER_CONFIG.verbose,
     status: cfg.status ?? DEFAULT_FOOTER_CONFIG.status,
     elapsed: cfg.elapsed ?? DEFAULT_FOOTER_CONFIG.elapsed,
     tokens: cfg.tokens ?? DEFAULT_FOOTER_CONFIG.tokens,
-    cache: cfg.cache ?? (verbose ? true : DEFAULT_FOOTER_CONFIG.cache),
+    cache: cfg.cache ?? DEFAULT_FOOTER_CONFIG.cache,
     context: cfg.context ?? DEFAULT_FOOTER_CONFIG.context,
-    model: cfg.model ?? (verbose ? true : DEFAULT_FOOTER_CONFIG.model),
+    model: cfg.model ?? DEFAULT_FOOTER_CONFIG.model,
   };
 }

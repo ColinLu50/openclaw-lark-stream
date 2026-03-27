@@ -268,10 +268,15 @@ export function formatFooterRuntimeSegments(params: {
     if (read != null && write != null && inputVal != null) {
       const total = read + write + inputVal;
       const hit = total > 0 ? Math.round((read / total) * 100) : 0;
-      const left = compactNumber(read);
-      const right = compactNumber(write);
-      zhParts.push(`缓存 ${left}/${right} (${hit}%)`);
-      enParts.push(`Cache ${left}/${right} (${hit}%)`);
+      if (verbose) {
+        const left = compactNumber(read);
+        const right = compactNumber(write);
+        zhParts.push(`缓存 ${left}/${right} (${hit}%)`);
+        enParts.push(`Cache ${left}/${right} (${hit}%)`);
+      } else {
+        zhParts.push(`${hit}% cache`);
+        enParts.push(`${hit}% cache`);
+      }
     }
   }
 
