@@ -9,6 +9,7 @@
  */
 
 import { optimizeMarkdownStyle } from './markdown-style';
+import type { FooterSessionMetrics } from './reply-dispatcher-types';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -187,12 +188,114 @@ export function formatElapsed(ms: number): string {
 function buildFooter(zhText: string, enText: string, isError?: boolean): CardElement[] {
   const zhContent = isError ? `<font color='red'>${zhText}</font>` : zhText;
   const enContent = isError ? `<font color='red'>${enText}</font>` : enText;
-  return [{
-    tag: 'markdown',
-    content: enContent,
-    i18n_content: { zh_cn: zhContent, en_us: enContent },
-    text_size: 'notation',
-  }];
+  return [
+    {
+      tag: 'markdown',
+      content: enContent,
+      i18n_content: { zh_cn: zhContent, en_us: enContent },
+      text_size: 'notation',
+    },
+  ];
+}
+
+export function compactNumber(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) {
+    const m = value / 1_000_000;
+    return Math.abs(m) >= 100 ? `${Math.round(m)}m` : `${m.toFixed(1)}m`;
+  }
+  if (abs >= 1_000) {
+    const k = value / 1_000;
+    return Math.abs(k) >= 100 ? `${Math.round(k)}k` : `${k.toFixed(1)}k`;
+  }
+  return `${Math.round(value)}`;
+}
+
+export function formatFooterRuntimeSegments(params: {
+  footer?: {
+    status?: boolean;
+    elapsed?: boolean;
+    tokens?: boolean;
+    cache?: boolean;
+    context?: boolean;
+    model?: boolean;
+  };
+  metrics?: FooterSessionMetrics;
+  elapsedMs?: number;
+  isError?: boolean;
+  isAborted?: boolean;
+}): { zh: string[]; en: string[] } {
+  const { footer, metrics, elapsedMs, isError, isAborted } = params;
+  const zhParts: string[] = [];
+  const enParts: string[] = [];
+
+  if (footer?.status) {
+    if (isError) {
+      zhParts.push('出错');
+      enParts.push('Error');
+    } else if (isAborted) {
+      zhParts.push('已停止');
+      enParts.push('Stopped');
+    } else {
+      zhParts.push('已完成');
+      enParts.push('Completed');
+    }
+  }
+
+  if (footer?.elapsed && elapsedMs != null) {
+    const d = formatElapsed(elapsedMs);
+    zhParts.push(`耗时 ${d}`);
+    enParts.push(`Elapsed ${d}`);
+  }
+
+  if (footer?.tokens && metrics) {
+    const inTokens = typeof metrics.inputTokens === 'number' ? Math.max(0, metrics.inputTokens) : undefined;
+    const outTokens = typeof metrics.outputTokens === 'number' ? Math.max(0, metrics.outputTokens) : undefined;
+    if (inTokens != null && outTokens != null) {
+      const inLabel = compactNumber(inTokens);
+      const outLabel = compactNumber(outTokens);
+      zhParts.push(`↑ ${inLabel} ↓ ${outLabel}`);
+      enParts.push(`↑ ${inLabel} ↓ ${outLabel}`);
+    }
+  }
+
+  if (footer?.cache && metrics) {
+    const read = typeof metrics.cacheRead === 'number' ? Math.max(0, metrics.cacheRead) : undefined;
+    const write = typeof metrics.cacheWrite === 'number' ? Math.max(0, metrics.cacheWrite) : undefined;
+    const inputVal = typeof metrics.inputTokens === 'number' ? Math.max(0, metrics.inputTokens) : undefined;
+    if (read != null && write != null && inputVal != null) {
+      const total = read + write + inputVal;
+      const hit = total > 0 ? Math.round((read / total) * 100) : 0;
+      const left = compactNumber(read);
+      const right = compactNumber(write);
+      zhParts.push(`缓存 ${left}/${right} (${hit}%)`);
+      enParts.push(`Cache ${left}/${right} (${hit}%)`);
+    }
+  }
+
+  if (footer?.context && metrics) {
+    const freshTotal = metrics.totalTokensFresh === false ? undefined : metrics.totalTokens;
+    const total = typeof freshTotal === 'number' ? Math.max(0, freshTotal) : undefined;
+    const ctx = typeof metrics.contextTokens === 'number' ? Math.max(0, metrics.contextTokens) : undefined;
+    if (total != null && ctx != null) {
+      const totalLabel = compactNumber(total);
+      const ctxLabel = compactNumber(ctx);
+      const pct = ctx > 0 ? Math.round((total / ctx) * 100) : 0;
+      const pctLabel = `${pct}%`;
+      zhParts.push(`上下文 ${totalLabel}/${ctxLabel} (${pctLabel})`);
+      enParts.push(`Context ${totalLabel}/${ctxLabel} (${pctLabel})`);
+    }
+  }
+
+  if (footer?.model && metrics?.model) {
+    const model = metrics.model.trim();
+    if (model) {
+      zhParts.push(model);
+      enParts.push(model);
+    }
+  }
+
+  return { zh: zhParts, en: enParts };
 }
 
 // ---------------------------------------------------------------------------
@@ -209,19 +312,28 @@ export function buildCardContent(
     text?: string;
     reasoningText?: string;
     reasoningElapsedMs?: number;
+    isReasoningPhase?: boolean;
     toolCalls?: ToolCallInfo[];
     confirmData?: ConfirmData;
     elapsedMs?: number;
     isError?: boolean;
     isAborted?: boolean;
-    footer?: { status?: boolean; elapsed?: boolean };
+    footer?: {
+      status?: boolean;
+      elapsed?: boolean;
+      tokens?: boolean;
+      cache?: boolean;
+      context?: boolean;
+      model?: boolean;
+    };
+    footerMetrics?: FooterSessionMetrics;
   } = {},
 ): FeishuCard {
   switch (state) {
     case 'thinking':
       return buildThinkingCard();
     case 'streaming':
-      return buildStreamingCard(data.text ?? '', data.toolCalls ?? [], data.reasoningText);
+      return buildStreamingCard(data.text ?? '', data.toolCalls ?? [], data.reasoningText, data.isReasoningPhase);
     case 'complete':
       return buildCompleteCard({
         text: data.text ?? '',
@@ -232,6 +344,7 @@ export function buildCardContent(
         reasoningElapsedMs: data.reasoningElapsedMs,
         isAborted: data.isAborted,
         footer: data.footer,
+        footerMetrics: data.footerMetrics,
       });
     case 'confirm':
       return buildConfirmCard(data.confirmData!);
@@ -257,10 +370,30 @@ function buildThinkingCard(): FeishuCard {
   };
 }
 
-function buildStreamingCard(partialText: string, toolCalls: ToolCallInfo[], reasoningText?: string): FeishuCard {
+function buildStreamingCard(
+  partialText: string,
+  toolCalls: ToolCallInfo[],
+  reasoningText?: string,
+  isReasoningPhase?: boolean,
+): FeishuCard {
   const elements: CardElement[] = [];
 
-  // Show only the currently running tool at the top
+  // Header area: reasoning stream (show when reasoning text is available)
+  if (reasoningText) {
+    const zhLabel = isReasoningPhase ? '💭 **思考中...**' : '💭 **已思考**';
+    const enLabel = isReasoningPhase ? '💭 **Thinking...**' : '💭 **Thought**';
+    elements.push({
+      tag: 'markdown',
+      content: `${enLabel}\n\n${reasoningText}`,
+      i18n_content: {
+        zh_cn: `${zhLabel}\n\n${reasoningText}`,
+        en_us: `${enLabel}\n\n${reasoningText}`,
+      },
+      text_size: 'notation',
+    });
+  }
+
+  // Header area: running tool indicator (shown below reasoning when both present)
   const running = toolCalls.find((tc) => tc.status === 'running');
   if (running) {
     elements.push({
@@ -270,19 +403,8 @@ function buildStreamingCard(partialText: string, toolCalls: ToolCallInfo[], reas
     });
   }
 
-  if (!partialText && reasoningText) {
-    // Reasoning phase: show reasoning content in notation style
-    elements.push({
-      tag: 'markdown',
-      content: `💭 **Thinking...**\n\n${reasoningText}`,
-      i18n_content: {
-        zh_cn: `💭 **思考中...**\n\n${reasoningText}`,
-        en_us: `💭 **Thinking...**\n\n${reasoningText}`,
-      },
-      text_size: 'notation',
-    });
-  } else if (partialText) {
-    // Answer phase: show answer content only
+  // Answer text (shown below header when not in pure reasoning phase)
+  if (partialText) {
     elements.push({
       tag: 'markdown',
       content: optimizeMarkdownStyle(partialText),
@@ -303,9 +425,18 @@ function buildCompleteCard(params: {
   reasoningText?: string;
   reasoningElapsedMs?: number;
   isAborted?: boolean;
-  footer?: { status?: boolean; elapsed?: boolean };
+  footer?: {
+    status?: boolean;
+    elapsed?: boolean;
+    tokens?: boolean;
+    cache?: boolean;
+    context?: boolean;
+    model?: boolean;
+  };
+  footerMetrics?: FooterSessionMetrics;
 }): FeishuCard {
-  const { text, toolCalls, elapsedMs, isError, reasoningText, reasoningElapsedMs, isAborted, footer } = params;
+  const { text, toolCalls, elapsedMs, isError, reasoningText, reasoningElapsedMs, isAborted, footer, footerMetrics } =
+    params;
   const elements: CardElement[] = [];
 
   // Collapsible reasoning panel (before main content)
@@ -406,36 +537,22 @@ function buildCompleteCard(params: {
   });
 
   // Footer meta-info: each metadata item is independently controlled via
-  // the `footer` config. Both status and elapsed default to hidden.
-  const zhParts: string[] = [];
-  const enParts: string[] = [];
+  // the `footer` config.
+  const footerParts = formatFooterRuntimeSegments({
+    footer,
+    metrics: footerMetrics,
+    elapsedMs,
+    isError,
+    isAborted,
+  });
 
-  if (footer?.status) {
-    if (isError) {
-      zhParts.push('出错');
-      enParts.push('Error');
-    } else if (isAborted) {
-      zhParts.push('已停止');
-      enParts.push('Stopped');
-    } else {
-      zhParts.push('已完成');
-      enParts.push('Completed');
-    }
-  }
-
-  if (footer?.elapsed && elapsedMs != null) {
-    const d = formatElapsed(elapsedMs);
-    zhParts.push(`耗时 ${d}`);
-    enParts.push(`Elapsed ${d}`);
-  }
-
-  if (zhParts.length > 0) {
-    elements.push(...buildFooter(zhParts.join(' · '), enParts.join(' · '), isError));
+  if (footerParts.zh.length > 0) {
+    elements.push(...buildFooter(footerParts.zh.join(' · '), footerParts.en.join(' · '), isError));
   }
 
   // Use the answer text (not reasoning) as the feed preview summary.
   // Strip markdown syntax so the preview reads as plain text.
-  const summaryText = text.replace(/[*_`#>\[\]()~]/g, '').trim();
+  const summaryText = text.replace(/[*_`#>[\]()~]/g, '').trim();
   const summary = summaryText ? { content: summaryText.slice(0, 120) } : undefined;
 
   return {

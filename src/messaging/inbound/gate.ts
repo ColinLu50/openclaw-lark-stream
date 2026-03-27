@@ -23,20 +23,38 @@
  *       `"disabled"` → block all senders
  */
 
-import type { ClawdbotConfig, HistoryEntry } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import type { MessageContext } from '../types';
-import type { FeishuConfig } from '../../core/types';
-import type { LarkAccount } from '../../core/types';
+import type { FeishuConfig, LarkAccount  } from '../../core/types';
 import { LarkClient } from '../../core/lark-client';
 import {
-  resolveFeishuGroupConfig,
-  resolveFeishuAllowlistMatch,
   isFeishuGroupAllowed,
-  splitLegacyGroupAllowFrom,
+  resolveFeishuAllowlistMatch,
+  resolveFeishuGroupConfig,
   resolveGroupSenderPolicyContext,
+  splitLegacyGroupAllowFrom,
 } from './policy';
 import { mentionedBot } from './mention';
 import { sendPairingReply } from './gate-effects';
+
+/**
+ * Resolve the effective `respondToMentionAll` setting.
+ *
+ * Precedence: per-group > default ("*") group > global account config > false.
+ */
+export function resolveRespondToMentionAll(params: {
+  groupConfig?: { respondToMentionAll?: boolean };
+  defaultConfig?: { respondToMentionAll?: boolean };
+  accountFeishuCfg?: { respondToMentionAll?: boolean };
+}): boolean {
+  return (
+    params.groupConfig?.respondToMentionAll ??
+    params.defaultConfig?.respondToMentionAll ??
+    params.accountFeishuCfg?.respondToMentionAll ??
+    false
+  );
+}
 
 /** Prevent spamming the legacy groupAllowFrom migration warning. */
 let legacyGroupAllowFromWarned = false;
@@ -224,6 +242,21 @@ function checkGroupGate(params: {
   });
 
   if (requireMention && !mentionedBot(ctx)) {
+    // Check if @all mention should bypass the mention requirement
+    if (ctx.mentionAll) {
+      const respondToAll = resolveRespondToMentionAll({
+        groupConfig,
+        defaultConfig,
+        accountFeishuCfg,
+      });
+      if (respondToAll) {
+        log(
+          `feishu[${account.accountId}]: @all mention detected in group ${ctx.chatId}, allowing due to respondToMentionAll`,
+        );
+        return { allowed: true };
+      }
+    }
+
     log(`feishu[${account.accountId}]: message in group ${ctx.chatId} did not mention bot, recording to history`);
 
     return {
@@ -232,7 +265,7 @@ function checkGroupGate(params: {
       historyEntry: {
         sender: ctx.senderId,
         body: `${ctx.senderName ?? ctx.senderId}: ${ctx.content}`,
-        timestamp: Date.now(),
+        timestamp: ctx.createTime ?? Date.now(),
         messageId: ctx.messageId,
       },
     };

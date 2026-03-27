@@ -11,39 +11,59 @@
  * detection to UnavailableGuard.
  */
 
-import { SILENT_REPLY_TOKEN, type ReplyPayload } from 'openclaw/plugin-sdk';
+import { readFile } from 'node:fs/promises';
+import { SILENT_REPLY_TOKEN } from 'openclaw/plugin-sdk/reply-runtime';
+import type { ReplyPayload } from 'openclaw/plugin-sdk';
 import { extractLarkApiCode } from '../core/api-error';
 import { larkLogger } from '../core/lark-logger';
+import { LarkClient } from '../core/lark-client';
+import { registerShutdownHook } from '../core/shutdown-hooks';
 import { sendCardFeishu, updateCardFeishu } from '../messaging/outbound/send';
+import { STREAMING_ELEMENT_ID, buildCardContent, splitReasoningText, stripReasoningTags, toCardKit2, type ToolCallInfo } from './builder';
+import {
+  FEISHU_CARD_TABLE_LIMIT,
+  isCardRateLimitError,
+  isCardTableLimitError,
+  sanitizeTextSegmentsForCard,
+} from './card-error';
 import {
   createCardEntity,
   sendCardByCardId,
+  setCardStreamingMode,
   streamCardContent,
   updateCardKitCard,
-  setCardStreamingMode,
 } from './cardkit';
-import { buildCardContent, formatElapsed, splitReasoningText, stripReasoningTags, STREAMING_ELEMENT_ID, toCardKit2, type ToolCallInfo } from './builder';
-import { optimizeMarkdownStyle } from './markdown-style';
-import { ImageResolver } from './image-resolver';
-import { registerShutdownHook } from '../core/shutdown-hooks';
 import { FlushController } from './flush-controller';
-import { UnavailableGuard } from './unavailable-guard';
+import { ImageResolver } from './image-resolver';
+import { optimizeMarkdownStyle } from './markdown-style';
 import type {
-  CardPhase,
-  TerminalReason,
-  ReasoningState,
-  StreamingTextState,
   CardKitState,
+  CardPhase,
+  FooterSessionMetrics,
+  ReasoningState,
   StreamingCardDeps,
+  StreamingTextState,
+  TerminalReason,
 } from './reply-dispatcher-types';
 import {
-  TERMINAL_PHASES,
-  PHASE_TRANSITIONS,
-  THROTTLE_CONSTANTS,
   EMPTY_REPLY_FALLBACK_TEXT,
+  PHASE_TRANSITIONS,
+  TERMINAL_PHASES,
+  THROTTLE_CONSTANTS,
 } from './reply-dispatcher-types';
+import { UnavailableGuard } from './unavailable-guard';
 
 const log = larkLogger('card/streaming');
+
+interface TerminalCardTextImageResolver {
+  resolveImages(text: string): string;
+}
+
+interface TerminalCardContentInput {
+  text: string;
+  reasoningText?: string;
+}
+
 // ---------------------------------------------------------------------------
 // CardKit 2.0 initial streaming payload
 // ---------------------------------------------------------------------------
@@ -52,6 +72,7 @@ const STREAMING_THINKING_CARD = {
   schema: '2.0',
   config: {
     streaming_mode: true,
+    // locales 用于支持多语言摘要展示
     locales: ['zh_cn', 'en_us'],
     summary: {
       content: 'Thinking...',
@@ -131,6 +152,130 @@ export class StreamingCardController {
 
   private elapsed(): number {
     return Date.now() - this.dispatchStartTime;
+  }
+
+  private needsFooterMetrics(): boolean {
+    const footer = this.deps.resolvedFooter;
+    return footer.tokens || footer.cache || footer.context || footer.model;
+  }
+
+  private async getFooterSessionMetrics(): Promise<FooterSessionMetrics | undefined> {
+    try {
+      const runtime = LarkClient.runtime as {
+        agent?: {
+          session?: {
+            resolveStorePath?: (storePath?: string) => string;
+            loadSessionStore?: (storePath: string) => Record<string, Record<string, unknown>>;
+          };
+        };
+        channel?: {
+          session?: {
+            resolveStorePath?: (storePath?: string) => string;
+          };
+        };
+      } | null;
+      if (!runtime) return undefined;
+
+      const cfgWithSession = this.deps.cfg as { sessions?: { store?: string }; session?: { store?: string } };
+      const sessionStorePath = cfgWithSession.sessions?.store ?? cfgWithSession.session?.store;
+      const key = this.deps.sessionKey.trim().toLowerCase();
+
+      const sessionApi = runtime.agent?.session;
+      if (sessionApi?.resolveStorePath && sessionApi?.loadSessionStore) {
+        const storePath = sessionApi.resolveStorePath(sessionStorePath);
+        const store = sessionApi.loadSessionStore(storePath);
+        const entry = store[key];
+        if (!entry || typeof entry !== 'object') {
+          log.debug('footer metrics lookup: session entry missing', {
+            sessionKey: this.deps.sessionKey,
+            normalizedSessionKey: key,
+            storePath,
+            source: 'runtime.agent.session',
+          });
+          return undefined;
+        }
+
+        const metrics: FooterSessionMetrics = {
+          inputTokens: typeof entry.inputTokens === 'number' ? entry.inputTokens : undefined,
+          outputTokens: typeof entry.outputTokens === 'number' ? entry.outputTokens : undefined,
+          cacheRead: typeof entry.cacheRead === 'number' ? entry.cacheRead : undefined,
+          cacheWrite: typeof entry.cacheWrite === 'number' ? entry.cacheWrite : undefined,
+          totalTokens: typeof entry.totalTokens === 'number' ? entry.totalTokens : undefined,
+          totalTokensFresh: typeof entry.totalTokensFresh === 'boolean' ? entry.totalTokensFresh : undefined,
+          contextTokens: typeof entry.contextTokens === 'number' ? entry.contextTokens : undefined,
+          model: typeof entry.model === 'string' ? entry.model : undefined,
+        };
+        log.debug('footer metrics lookup: session entry found', {
+          sessionKey: this.deps.sessionKey,
+          normalizedSessionKey: key,
+          storePath,
+          source: 'runtime.agent.session',
+          hasMetrics: !!(
+            metrics.inputTokens != null ||
+            metrics.outputTokens != null ||
+            metrics.cacheRead != null ||
+            metrics.cacheWrite != null ||
+            metrics.totalTokens != null ||
+            metrics.contextTokens != null ||
+            metrics.model
+          ),
+        });
+        return metrics;
+      }
+
+      const channelSession = runtime.channel?.session;
+      if (!channelSession?.resolveStorePath) {
+        return undefined;
+      }
+
+      const storePath = channelSession.resolveStorePath(sessionStorePath);
+      const raw = await readFile(storePath, 'utf8');
+      const parsed: unknown = JSON.parse(raw);
+      const store =
+        parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+          ? (parsed as Record<string, Record<string, unknown>>)
+          : {};
+      const entry = store[key];
+      if (!entry || typeof entry !== 'object') {
+        log.debug('footer metrics lookup: session entry missing', {
+          sessionKey: this.deps.sessionKey,
+          normalizedSessionKey: key,
+          storePath,
+          source: 'channel.session.file',
+        });
+        return undefined;
+      }
+
+      const metrics: FooterSessionMetrics = {
+        inputTokens: typeof entry.inputTokens === 'number' ? entry.inputTokens : undefined,
+        outputTokens: typeof entry.outputTokens === 'number' ? entry.outputTokens : undefined,
+        cacheRead: typeof entry.cacheRead === 'number' ? entry.cacheRead : undefined,
+        cacheWrite: typeof entry.cacheWrite === 'number' ? entry.cacheWrite : undefined,
+        totalTokens: typeof entry.totalTokens === 'number' ? entry.totalTokens : undefined,
+        totalTokensFresh: typeof entry.totalTokensFresh === 'boolean' ? entry.totalTokensFresh : undefined,
+        contextTokens: typeof entry.contextTokens === 'number' ? entry.contextTokens : undefined,
+        model: typeof entry.model === 'string' ? entry.model : undefined,
+      };
+      log.debug('footer metrics lookup: session entry found', {
+        sessionKey: this.deps.sessionKey,
+        normalizedSessionKey: key,
+        storePath,
+        source: 'channel.session.file',
+        hasMetrics: !!(
+          metrics.inputTokens != null ||
+          metrics.outputTokens != null ||
+          metrics.cacheRead != null ||
+          metrics.cacheWrite != null ||
+          metrics.totalTokens != null ||
+          metrics.contextTokens != null ||
+          metrics.model
+        ),
+      });
+      return metrics;
+    } catch (err) {
+      log.warn('footer metrics lookup failed', { error: String(err), sessionKey: this.deps.sessionKey });
+      return undefined;
+    }
   }
 
   constructor(deps: StreamingCardDeps) {
@@ -301,10 +446,30 @@ export class StreamingCardController {
     // 累积 deliver 文本用于最终卡片
     this.text.completedText += (this.text.completedText ? '\n\n' : '') + answerText;
 
-    // 每次 deliver 都更新显示文本并刷新卡片
-    this.text.accumulatedText = this.text.completedText;
-    this.text.streamingPrefix = this.text.completedText;
-    this.text.lastPartialText = '';
+    // 没有流式数据时，用 deliver 文本显示在卡片上
+    if (!this.text.lastPartialText && !this.text.streamingPrefix) {
+      this.text.accumulatedText += (this.text.accumulatedText ? '\n\n' : '') + answerText;
+      this.text.streamingPrefix = this.text.accumulatedText;
+      await this.throttledCardUpdate();
+    }
+  }
+
+  async onReasoningStream(payload: ReplyPayload): Promise<void> {
+    if (!this.shouldProceed('onReasoningStream')) return;
+
+    await this.ensureCardCreated();
+    if (!this.shouldProceed('onReasoningStream.postCreate')) return;
+    if (!this.cardKit.cardMessageId) return;
+
+    const rawText = payload.text ?? '';
+    if (!rawText) return;
+
+    if (!this.reasoning.reasoningStartTime) {
+      this.reasoning.reasoningStartTime = Date.now();
+    }
+    this.reasoning.isReasoningPhase = true;
+    const split = splitReasoningText(rawText);
+    this.reasoning.accumulatedReasoningText = split.reasoningText ?? rawText;
     await this.throttledCardUpdate();
   }
 
@@ -331,29 +496,32 @@ export class StreamingCardController {
     await this.throttledCardUpdate();
   }
 
-  async onReasoningStream(payload: ReplyPayload): Promise<void> {
-    if (!this.shouldProceed('onReasoningStream')) return;
-
-    await this.ensureCardCreated();
-    if (!this.shouldProceed('onReasoningStream.postCreate')) return;
-    if (!this.cardKit.cardMessageId) return;
-
-    const rawText = payload.text ?? '';
-    if (!rawText) return;
-
-    if (!this.reasoning.reasoningStartTime) {
-      this.reasoning.reasoningStartTime = Date.now();
+  private completeRunningTools(): void {
+    for (const tc of this.toolCalls) {
+      if (tc.status === 'running') {
+        tc.status = 'complete';
+        tc.durationMs = tc.startTime ? Date.now() - tc.startTime : 0;
+      }
     }
-    this.reasoning.isReasoningPhase = true;
-    const split = splitReasoningText(rawText);
-    this.reasoning.accumulatedReasoningText = split.reasoningText ?? rawText;
-    await this.throttledCardUpdate();
   }
 
   async onPartialReply(payload: ReplyPayload): Promise<void> {
     if (!this.shouldProceed('onPartialReply')) return;
 
-    const text = stripReasoningTags(payload.text ?? '');
+    // Use splitReasoningText (consistent with onDeliver/onReasoningStream)
+    // to extract <think> tag content before stripping it from the answer.
+    // Previously only stripReasoningTags was called, silently discarding
+    // any thinking content that the LLM wrapped in <think> tags.
+    const rawText = payload.text ?? '';
+    const split = splitReasoningText(rawText);
+    if (split.reasoningText) {
+      if (!this.reasoning.reasoningStartTime) {
+        this.reasoning.reasoningStartTime = Date.now();
+      }
+      this.reasoning.accumulatedReasoningText = split.reasoningText;
+      this.reasoning.isReasoningPhase = true;
+    }
+    const text = split.answerText ?? stripReasoningTags(rawText);
     log.debug('onPartialReply', { len: text.length });
     if (!text) return;
 
@@ -398,28 +566,35 @@ export class StreamingCardController {
     if (this.cardCreationPromise) await this.cardCreationPromise;
 
     const errorEffectiveCardId = this.cardKit.cardKitCardId ?? this.cardKit.originalCardKitCardId;
+    const footerMetrics = this.needsFooterMetrics() ? await this.getFooterSessionMetrics() : undefined;
     if (this.cardKit.cardMessageId) {
       try {
         const rawErrorText = this.text.accumulatedText
           ? `${this.text.accumulatedText}\n\n---\n**Error**: An error occurred while generating the response.`
           : '**Error**: An error occurred while generating the response.';
-        const errorText = this.imageResolver.resolveImages(rawErrorText);
-        // Mark any running tools as error
+        const terminalContent = prepareTerminalCardContent(
+          {
+            text: rawErrorText,
+            reasoningText: this.reasoning.accumulatedReasoningText || undefined,
+          },
+          this.imageResolver,
+        );
+        // Mark any running tools as error before final card
         for (const tc of this.toolCalls) {
           if (tc.status === 'running') {
             tc.status = 'error';
             tc.durationMs = tc.startTime ? Date.now() - tc.startTime : 0;
           }
         }
-
         const errorCard = buildCardContent('complete', {
-          text: errorText,
+          text: terminalContent.text,
           toolCalls: this.toolCalls,
-          reasoningText: this.reasoning.accumulatedReasoningText || undefined,
+          reasoningText: terminalContent.reasoningText,
           reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
           elapsedMs: this.elapsed(),
           isError: true,
           footer: this.deps.resolvedFooter,
+          footerMetrics,
         });
         if (errorEffectiveCardId) {
           await this.closeStreamingAndUpdate(errorEffectiveCardId, errorCard, 'onError');
@@ -480,18 +655,29 @@ export class StreamingCardController {
           log.warn('reply completed without visible text, using empty-reply fallback');
         }
 
+        // 等待图片异步解析（最多 15s），避免终态卡片留占位符
         const resolvedDisplayText = await this.imageResolver.resolveImagesAwait(displayText, 15_000);
+
+        const terminalContent = prepareTerminalCardContent(
+          {
+            text: resolvedDisplayText,
+            reasoningText: this.reasoning.accumulatedReasoningText || undefined,
+          },
+          this.imageResolver,
+        );
+        const footerMetrics = this.needsFooterMetrics() ? await this.getFooterSessionMetrics() : undefined;
 
         // Mark any remaining running tools as complete before final card
         this.completeRunningTools();
 
         const completeCard = buildCardContent('complete', {
-          text: resolvedDisplayText,
+          text: terminalContent.text,
           toolCalls: this.toolCalls,
-          reasoningText: this.reasoning.accumulatedReasoningText || undefined,
+          reasoningText: terminalContent.reasoningText,
           reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
           elapsedMs: this.elapsed(),
           footer: this.deps.resolvedFooter,
+          footerMetrics,
         });
 
         if (idleEffectiveCardId) {
@@ -548,36 +734,43 @@ export class StreamingCardController {
 
       if (this.cardCreationPromise) await this.cardCreationPromise;
 
-      // Mark running tools as aborted
+      const effectiveCardId = this.cardKit.cardKitCardId ?? this.cardKit.originalCardKitCardId;
+      const elapsedMs = Date.now() - this.dispatchStartTime;
+      const terminalContent = prepareTerminalCardContent(
+        {
+          text: this.text.accumulatedText || 'Aborted.',
+          reasoningText: this.reasoning.accumulatedReasoningText || undefined,
+        },
+        this.imageResolver,
+      );
+      const footerMetrics = this.needsFooterMetrics() ? await this.getFooterSessionMetrics() : undefined;
+      // Mark any running tools as aborted
       this.completeRunningTools();
 
-      const effectiveCardId = this.cardKit.cardKitCardId ?? this.cardKit.originalCardKitCardId;
       if (effectiveCardId) {
-        const elapsedMs = Date.now() - this.dispatchStartTime;
-        const abortText = this.imageResolver.resolveImages(this.text.accumulatedText || 'Aborted.');
         const abortCardContent = buildCardContent('complete', {
-          text: abortText,
+          text: terminalContent.text,
           toolCalls: this.toolCalls,
-          reasoningText: this.reasoning.accumulatedReasoningText || undefined,
+          reasoningText: terminalContent.reasoningText,
           reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
           elapsedMs,
           isAborted: true,
           footer: this.deps.resolvedFooter,
+          footerMetrics,
         });
         await this.closeStreamingAndUpdate(effectiveCardId, abortCardContent, 'abortCard');
         log.info('abortCard completed', { effectiveCardId });
       } else if (this.cardKit.cardMessageId) {
         // IM fallback: 卡片不是通过 CardKit 发的，用 im.message.patch 更新
-        const elapsedMs = Date.now() - this.dispatchStartTime;
-        const abortText = this.imageResolver.resolveImages(this.text.accumulatedText || 'Aborted.');
         const abortCard = buildCardContent('complete', {
-          text: abortText,
+          text: terminalContent.text,
           toolCalls: this.toolCalls,
-          reasoningText: this.reasoning.accumulatedReasoningText || undefined,
+          reasoningText: terminalContent.reasoningText,
           reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
           elapsedMs,
           isAborted: true,
           footer: this.deps.resolvedFooter,
+          footerMetrics,
         });
         await updateCardFeishu({
           cfg: this.deps.cfg,
@@ -585,7 +778,9 @@ export class StreamingCardController {
           card: abortCard as unknown as Record<string, unknown>,
           accountId: this.deps.accountId,
         });
-        log.info('abortCard completed (IM fallback)', { messageId: this.cardKit.cardMessageId });
+        log.info('abortCard completed (IM fallback)', {
+          messageId: this.cardKit.cardMessageId,
+        });
       }
     } catch (err) {
       log.warn('abortCard failed', { error: String(err) });
@@ -708,7 +903,9 @@ export class StreamingCardController {
         if (this.guard.terminate('ensureCardCreated.outer', err)) {
           return;
         }
-        log.warn('thinking card failed, falling back to static', { error: String(err) });
+        log.warn('thinking card failed, falling back to static', {
+          error: String(err),
+        });
         this.transition('creation_failed', 'ensureCardCreated.outer', 'creation_failed');
       }
     })();
@@ -736,6 +933,7 @@ export class StreamingCardController {
 
     try {
       const displayText = this.buildDisplayText();
+      // 流式中间帧使用同步 resolveImages（不等待异步上传）
       const resolvedText = this.imageResolver.resolveImages(displayText);
 
       if (this.cardKit.cardKitCardId) {
@@ -758,8 +956,9 @@ export class StreamingCardController {
         log.debug('flushCardUpdate: IM patch fallback');
         const card = buildCardContent('streaming', {
           text: this.reasoning.isReasoningPhase ? '' : resolvedText,
+          reasoningText: this.reasoning.accumulatedReasoningText || undefined,
+          isReasoningPhase: this.reasoning.isReasoningPhase,
           toolCalls: this.toolCalls,
-          reasoningText: this.reasoning.isReasoningPhase ? this.reasoning.accumulatedReasoningText : undefined,
         });
         await updateCardFeishu({
           cfg: this.deps.cfg,
@@ -773,10 +972,21 @@ export class StreamingCardController {
 
       const apiCode = extractLarkApiCode(err);
 
-      if (apiCode === 230020) {
+      // 速率限制（230020）— 跳过此帧，不降级
+      if (isCardRateLimitError(err)) {
         log.info('flushCardUpdate: rate limited (230020), skipping', {
           seq: this.cardKit.cardKitSequence,
         });
+        return;
+      }
+
+      // 卡片表格数超出飞书限制（230099/11310）— 禁用 CardKit 流式，
+      // 保留 originalCardKitCardId 供 onIdle 做最终 CardKit 更新
+      if (isCardTableLimitError(err)) {
+        log.warn('flushCardUpdate: card table limit exceeded (230099/11310), disabling CardKit streaming', {
+          seq: this.cardKit.cardKitSequence,
+        });
+        this.cardKit.cardKitCardId = null;
         return;
       }
 
@@ -793,44 +1003,26 @@ export class StreamingCardController {
     }
   }
 
-  /**
-   * Mark all currently running tools as complete and compute their duration.
-   */
-  private completeRunningTools(): void {
-    const now = Date.now();
-    for (const tc of this.toolCalls) {
-      if (tc.status === 'running') {
-        tc.status = 'complete';
-        tc.durationMs = tc.startTime ? now - tc.startTime : 0;
-      }
-    }
-  }
-
-  /**
-   * Build tool status line for embedding in streaming markdown.
-   * Only shows the currently running tool (previous tools are replaced).
-   */
-  private buildToolStatusText(): string {
-    const running = this.toolCalls.find((tc) => tc.status === 'running');
-    if (!running) return '';
-    return `🔄 **${running.name}**...`;
-  }
-
   private buildDisplayText(): string {
-    let display: string;
+    const parts: string[] = [];
+
+    // Reasoning phase: show reasoning content at top
     if (this.reasoning.isReasoningPhase && this.reasoning.accumulatedReasoningText) {
-      const reasoningDisplay = `💭 **Thinking...**\n\n${this.reasoning.accumulatedReasoningText}`;
-      display = this.text.accumulatedText ? this.text.accumulatedText + '\n\n' + reasoningDisplay : reasoningDisplay;
-    } else {
-      display = this.text.accumulatedText;
+      parts.push(`💭 **Thinking...**\n\n${this.reasoning.accumulatedReasoningText}`);
     }
 
-    // Prepend current tool status at the top of the display
-    const toolStatus = this.buildToolStatusText();
-    if (toolStatus) {
-      display = display ? toolStatus + '\n\n---\n' + display : toolStatus;
+    // Running tool indicator
+    const runningTool = this.toolCalls.find((tc) => tc.status === 'running');
+    if (runningTool) {
+      parts.push(`🔄 **${runningTool.name}**...`);
     }
-    return display;
+
+    // Answer text (only shown when not in pure reasoning phase)
+    if (this.text.accumulatedText && !this.reasoning.isReasoningPhase) {
+      parts.push(this.text.accumulatedText);
+    }
+
+    return parts.join('\n\n');
   }
 
   private async throttledCardUpdate(): Promise<void> {
@@ -887,6 +1079,32 @@ export class StreamingCardController {
 // ---------------------------------------------------------------------------
 // Error detail extraction helpers (replacing `any` casts)
 // ---------------------------------------------------------------------------
+
+/**
+ * 终态卡片的正文和 reasoning 都会被飞书按 markdown 渲染，
+ * 因此两者都要先做图片替换与表格降级，避免再次撞到 230099/11310。
+ */
+export function prepareTerminalCardContent(
+  content: TerminalCardContentInput,
+  imageResolver: TerminalCardTextImageResolver,
+  tableLimit: number = FEISHU_CARD_TABLE_LIMIT,
+): TerminalCardContentInput {
+  const resolvedReasoningText = content.reasoningText ? imageResolver.resolveImages(content.reasoningText) : undefined;
+  const resolvedText = imageResolver.resolveImages(content.text);
+  const sanitizedSegments = sanitizeTextSegmentsForCard(
+    resolvedReasoningText ? [resolvedReasoningText, resolvedText] : [resolvedText],
+    tableLimit,
+  );
+
+  if (resolvedReasoningText) {
+    return {
+      reasoningText: sanitizedSegments[0],
+      text: sanitizedSegments[1],
+    };
+  }
+
+  return { text: sanitizedSegments[0] };
+}
 
 function extractApiDetail(err: unknown): string {
   if (!err || typeof err !== 'object') return String(err);

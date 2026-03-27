@@ -14,13 +14,14 @@
  */
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
-import type { FeishuMessageEvent, MessageContext, MentionInfo } from '../types';
-import { convertMessageContent, type ConvertContext } from '../converters/content-converter';
-import { getUserNameCache } from './user-name-cache';
+import type { FeishuMessageEvent, MentionInfo, MessageContext } from '../types';
+import { type ConvertContext, convertMessageContent } from '../converters/content-converter';
 import { getLarkAccount } from '../../core/accounts';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
-import { fetchCardContent, createFetchSubMessages, createParseResolveNames } from './parse-io';
+import { isMentionAll } from './mention';
+import { getUserNameCache } from './user-name-cache';
+import { createFetchSubMessages, createParseResolveNames, fetchCardContent } from './parse-io';
 
 const log = larkLogger('inbound/parse');
 
@@ -47,8 +48,22 @@ export async function parseMessageEvent(
   // 1. Build MentionInfo list from event mentions
   const mentionMap = new Map<string, MentionInfo>();
   const mentionList: MentionInfo[] = [];
+  let mentionAll = false;
 
   for (const m of event.message.mentions ?? []) {
+    // Detect @all / @所有人: add to mentionMap (for text replacement by
+    // resolveMentions) but not mentionList (not a user mention).
+    if (isMentionAll(m)) {
+      mentionAll = true;
+      mentionMap.set(m.key, {
+        key: m.key,
+        openId: '',
+        name: m.name,
+        isBot: false,
+      });
+      continue;
+    }
+
     const openId = m.id?.open_id ?? '';
     if (!openId) continue;
 
@@ -122,6 +137,7 @@ export async function parseMessageEvent(
     contentType: event.message.message_type,
     resources,
     mentions: mentionList,
+    mentionAll,
     createTime: Number.isNaN(createTime) ? undefined : createTime,
     rawMessage:
       effectiveContent !== event.message.content ? { ...event.message, content: effectiveContent } : event.message,

@@ -16,12 +16,13 @@ import { registerOapiTools } from './src/tools/oapi/index';
 import { registerFeishuMcpDocTools } from './src/tools/mcp/doc/index';
 import { registerFeishuOAuthTool } from './src/tools/oauth';
 import { registerFeishuOAuthBatchAuthTool } from './src/tools/oauth-batch-auth';
+import { registerAskUserQuestionTool } from './src/tools/ask-user-question';
 import {
-  runDiagnosis,
-  formatDiagReportCli,
-  traceByMessageId,
-  formatTraceOutput,
   analyzeTrace,
+  formatDiagReportCli,
+  formatTraceOutput,
+  runDiagnosis,
+  traceByMessageId,
 } from './src/commands/diagnose';
 import { registerCommands } from './src/commands/index';
 import { larkLogger } from './src/core/lark-logger';
@@ -121,13 +122,17 @@ const plugin = {
     // Register OAuth batch auth tool (batch authorization for all app scopes)
     registerFeishuOAuthBatchAuthTool(api);
 
-    // ---- Tool call hooks (auto-trace AI tool invocations) ----
+    // Register AskUserQuestion tool (interactive card-based user prompting)
+    registerAskUserQuestionTool(api);
 
+    // ---- Tool call hooks (trace Feishu-owned tool invocations only) ----
     api.on('before_tool_call', (event) => {
+      if (!event.toolName.startsWith('feishu_')) return;
       log.info(`tool call: ${event.toolName} params=${JSON.stringify(event.params)}`);
     });
 
     api.on('after_tool_call', (event) => {
+      if (!event.toolName.startsWith('feishu_')) return;
       if (event.error) {
         log.error(`tool fail: ${event.toolName} ${event.error} (${event.durationMs ?? 0}ms)`);
       } else {

@@ -12,9 +12,27 @@
  * - `group_message_type`: "chat" | "thread" (only for chat_mode=group)
  */
 
+import type * as Lark from '@larksuiteoapi/node-sdk';
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
-import { LarkClient } from './lark-client';
 import { larkLogger } from './lark-logger';
+
+// ---------------------------------------------------------------------------
+// LarkClient injection — breaks circular dependency with lark-client.ts.
+// lark-client.ts calls injectLarkClient() at module init time, so the
+// reference is available before any message processing begins.
+// ---------------------------------------------------------------------------
+
+/** Minimal structural type for LarkClient class (avoids circular import). */
+interface LarkClientStatic {
+  fromCfg(cfg: ClawdbotConfig, accountId?: string): { sdk: Lark.Client };
+}
+
+let _LarkClient: LarkClientStatic | null = null;
+
+/** @internal Called by lark-client.ts at module init time. */
+export function injectLarkClient(cls: LarkClientStatic): void {
+  _LarkClient = cls;
+}
 
 const log = larkLogger('core/chat-info-cache');
 
@@ -147,7 +165,8 @@ export async function getChatInfo(params: {
   if (cached) return cached;
 
   try {
-    const sdk = LarkClient.fromCfg(cfg, accountId).sdk;
+    if (!_LarkClient) throw new Error('LarkClient not injected — circular dependency broken?');
+    const sdk = _LarkClient.fromCfg(cfg, accountId).sdk;
     const response = await sdk.im.chat.get({
       path: { chat_id: chatId },
     });

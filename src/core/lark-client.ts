@@ -17,15 +17,16 @@
 import * as Lark from '@larksuiteoapi/node-sdk';
 
 import type { ClawdbotConfig, PluginRuntime } from 'openclaw/plugin-sdk';
-import type { LarkBrand, LarkAccount, FeishuProbeResult } from './types';
+import type { MessageDedup } from '../messaging/inbound/dedup';
+import { clearUserNameCache } from '../messaging/inbound/user-name-cache-store';
+import type { FeishuProbeResult, LarkAccount, LarkBrand } from './types';
 import { getLarkAccount } from './accounts';
-import { clearUserNameCache } from '../messaging/inbound/user-name-cache';
-import { clearChatInfoCache } from './chat-info-cache';
-import { getUserAgent } from './version';
+import { clearChatInfoCache, injectLarkClient } from './chat-info-cache';
 import { larkLogger } from './lark-logger';
+import { getLarkRuntime, setLarkRuntime } from './runtime-store';
+import { getUserAgent } from './version';
 
 const log = larkLogger('core/lark-client');
-import type { MessageDedup } from '../messaging/inbound/dedup';
 
 // ---------------------------------------------------------------------------
 // 注入 User-Agent 到所有飞书 SDK 请求
@@ -84,6 +85,38 @@ function resolveBrand(brand: LarkBrand | undefined): Lark.Domain | string {
 /** Instance cache keyed by accountId. */
 const cache = new Map<string, LarkClient>();
 
+/**
+ * Compare two SecretRef-shaped objects by their identity fields.
+ * Key-order independent, unlike JSON.stringify.
+ */
+function secretRefsEqual(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  return a.source === b.source && a.provider === b.provider && a.id === b.id;
+}
+
+/**
+ * Compare two credential values that may be strings or SecretRef objects.
+ *
+ * - Both strings: direct `===`.
+ * - Both SecretRef objects: compare `source`, `provider`, `id` explicitly.
+ * - Mixed (string vs SecretRef): treat as equal — the platform resolves the
+ *   SecretRef at startup (producing the cached string) but `loadConfig()`
+ *   returns the raw object on subsequent calls.  Detecting SecretRef identity
+ *   changes is not useful here because the platform does not re-resolve
+ *   feishu secrets on reload, so a new SecretRef would be equally unusable.
+ */
+function credentialsEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a === 'string' && typeof b === 'string') return false;
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    return secretRefsEqual(a as Record<string, unknown>, b as Record<string, unknown>);
+  }
+  // Mixed types: keep the cached instance that holds the working string.
+  if ((typeof a === 'string' && b && typeof b === 'object') || (typeof b === 'string' && a && typeof a === 'object')) {
+    return true;
+  }
+  return false;
+}
+
 export class LarkClient {
   readonly account: LarkAccount;
 
@@ -99,22 +132,14 @@ export class LarkClient {
 
   // ---- Plugin runtime (singleton) ------------------------------------------
 
-  private static _runtime: PluginRuntime | null = null;
-
   /** Persist the runtime instance for later retrieval (activate 阶段调用一次). */
   static setRuntime(runtime: PluginRuntime): void {
-    LarkClient._runtime = runtime;
+    setLarkRuntime(runtime);
   }
 
   /** Retrieve the stored runtime instance. Throws if not yet initialised. */
   static get runtime(): PluginRuntime {
-    if (!LarkClient._runtime) {
-      throw new Error(
-        'Feishu plugin runtime has not been initialised. ' +
-          'Ensure LarkClient.setRuntime() is called during plugin activation.',
-      );
-    }
-    return LarkClient._runtime;
+    return getLarkRuntime();
   }
 
   // ---- Global config (singleton) -------------------------------------------
@@ -160,7 +185,11 @@ export class LarkClient {
    */
   static fromAccount(account: LarkAccount): LarkClient {
     const existing = cache.get(account.accountId);
-    if (existing && existing.account.appId === account.appId && existing.account.appSecret === account.appSecret) {
+    if (
+      existing &&
+      existing.account.appId === account.appId &&
+      credentialsEqual(existing.account.appSecret, account.appSecret)
+    ) {
       return existing;
     }
     // Credentials changed — tear down the stale instance before replacing it.
@@ -204,7 +233,7 @@ export class LarkClient {
    * With `accountId` — dispose that single instance.
    * Without — dispose every cached instance and clear the cache.
    */
-  static clearCache(accountId?: string): void {
+  static async clearCache(accountId?: string): Promise<void> {
     if (accountId !== undefined) {
       cache.get(accountId)?.dispose();
       clearUserNameCache(accountId);
@@ -367,7 +396,7 @@ export class LarkClient {
 
   /** Whether a WebSocket client is currently active. */
   get wsConnected(): boolean {
-    return this._wsClient !== null;
+    return this._wsClient != null;
   }
 
   /** Disconnect WebSocket but keep instance in cache. */
@@ -433,5 +462,35 @@ export class LarkClient {
         reject(err);
       }
     });
+  }
+}
+
+// Inject LarkClient reference into chat-info-cache to break the circular
+// dependency (chat-info-cache needs LarkClient.fromCfg but lark-client
+// imports clearChatInfoCache from chat-info-cache).
+injectLarkClient(LarkClient);
+
+// ---------------------------------------------------------------------------
+// Config resolution helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the freshest available config for account resolution.
+ *
+ * The `config` object captured in tool-registration closures may be stale
+ * after a hot-reload: openclaw re-initialises the runtime but the plugin
+ * closure still holds the old snapshot.  Calling
+ * `LarkClient.runtime.config.loadConfig()` always returns the current live
+ * config, so account lookups pick up any changes made since plugin load.
+ *
+ * @param fallback - Config to use when the runtime is not yet initialised
+ *   (e.g. during early startup before the first `LarkClient.runtime` attach).
+ */
+export function getResolvedConfig(fallback: ClawdbotConfig): ClawdbotConfig {
+  try {
+    return LarkClient.runtime.config.loadConfig() as ClawdbotConfig;
+  } catch {
+    // runtime not yet initialised — fall back to passed config
+    return fallback;
   }
 }

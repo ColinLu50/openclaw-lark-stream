@@ -17,12 +17,16 @@ import type { FeishuFooterConfig } from './types';
 /**
  * The default footer configuration.
  *
- * By default both status text ("已完成" / "出错" / "已停止") and elapsed
- * time are shown in the card footer.
+ * By default status text ("已完成" / "出错" / "已停止") and elapsed
+ * time are shown. Token/cache/context/model metrics are off by default.
  */
 export const DEFAULT_FOOTER_CONFIG: Required<FeishuFooterConfig> = {
   status: true,
   elapsed: true,
+  tokens: false,
+  cache: false,
+  context: false,
+  model: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -40,5 +44,9 @@ export function resolveFooterConfig(cfg?: FeishuFooterConfig): Required<FeishuFo
   return {
     status: cfg.status ?? DEFAULT_FOOTER_CONFIG.status,
     elapsed: cfg.elapsed ?? DEFAULT_FOOTER_CONFIG.elapsed,
+    tokens: cfg.tokens ?? DEFAULT_FOOTER_CONFIG.tokens,
+    cache: cfg.cache ?? DEFAULT_FOOTER_CONFIG.cache,
+    context: cfg.context ?? DEFAULT_FOOTER_CONFIG.context,
+    model: cfg.model ?? DEFAULT_FOOTER_CONFIG.model,
   };
 }

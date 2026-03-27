@@ -6,13 +6,13 @@
  */
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
-import type { FeishuSendResult } from '../types';
+import type { FeishuSendResult, MentionInfo  } from '../types';
+import { createAccountScopedConfig } from '../../core/accounts';
 import { LarkClient } from '../../core/lark-client';
 import { normalizeFeishuTarget, normalizeMessageId, resolveReceiveIdType } from '../../core/targets';
 import { runWithMessageUnavailableGuard } from '../../core/message-unavailable';
-import type { MentionInfo } from '../types';
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
-import { buildMentionedMessage, buildMentionedCardContent } from '../inbound/mention';
+import { buildMentionedCardContent, buildMentionedMessage } from '../inbound/mention';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,6 +65,33 @@ export interface SendFeishuCardParams {
 // ---------------------------------------------------------------------------
 
 /**
+ * Resolve the configured markdown table mode for Feishu and convert tables if
+ * the runtime converter is available.
+ *
+ * @param cfg - Plugin configuration
+ * @param text - Raw markdown text
+ * @param accountId - Optional account identifier for multi-account setups
+ * @returns Converted text, or the original text when runtime helpers are unavailable
+ */
+function convertMarkdownTablesForFeishu(cfg: ClawdbotConfig, text: string, accountId?: string): string {
+  try {
+    const accountScopedCfg = createAccountScopedConfig(cfg, accountId);
+    const runtime = LarkClient.runtime;
+    if (runtime?.channel?.text?.convertMarkdownTables && runtime.channel.text.resolveMarkdownTableMode) {
+      const tableMode = runtime.channel.text.resolveMarkdownTableMode({
+        cfg: accountScopedCfg,
+        channel: 'feishu',
+      });
+      return runtime.channel.text.convertMarkdownTables(text, tableMode);
+    }
+  } catch {
+    // Runtime not available -- use the text as-is.
+  }
+
+  return text;
+}
+
+/**
  * Send a text message (rendered as a Feishu "post" with markdown support)
  * to a chat or user.
  *
@@ -99,14 +126,7 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
       }
 
       // Convert markdown tables to Feishu-compatible format.
-      try {
-        const runtime = LarkClient.runtime;
-        if (runtime?.channel?.text?.convertMarkdownTables) {
-          processed = runtime.channel.text.convertMarkdownTables(processed, 'bullets');
-        }
-      } catch {
-        // Runtime not available -- use the text as-is.
-      }
+      processed = convertMarkdownTablesForFeishu(cfg, processed, accountId);
 
       // Apply Markdown style optimization.
       processed = optimizeMarkdownStyle(processed, 1);
@@ -125,16 +145,8 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
       messageText = buildMentionedMessage(mentions, messageText);
     }
 
-    // Convert markdown tables to Feishu-compatible format if the runtime
-    // provides a converter.
-    try {
-      const runtime = LarkClient.runtime;
-      if (runtime?.channel?.text?.convertMarkdownTables) {
-        messageText = runtime.channel.text.convertMarkdownTables(messageText, 'bullets');
-      }
-    } catch {
-      // Runtime not available -- use the text as-is.
-    }
+    // Convert markdown tables to Feishu-compatible format.
+    messageText = convertMarkdownTablesForFeishu(cfg, messageText, accountId);
 
     // Apply Markdown style optimization.
     messageText = optimizeMarkdownStyle(messageText, 1);
@@ -450,7 +462,9 @@ export async function editMessageFeishu(params: {
 
   const client = LarkClient.fromCfg(cfg, accountId).sdk;
 
-  const optimizedText = optimizeMarkdownStyle(text);
+  const convertedText = convertMarkdownTablesForFeishu(cfg, text, accountId);
+  // Use cardVersion=1 consistent with sendMessageFeishu post path.
+  const optimizedText = optimizeMarkdownStyle(convertedText, 1);
 
   const contentPayload = JSON.stringify({
     zh_cn: {

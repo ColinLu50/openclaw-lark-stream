@@ -61,18 +61,19 @@ export function enqueueFeishuChatTask(params: {
   const key = buildQueueKey(accountId, chatId, threadId);
   const prev = chatQueues.get(key) ?? Promise.resolve();
   const status: QueueStatus = chatQueues.has(key) ? 'queued' : 'immediate';
-  const next = prev.then(task, task); // continue queue even if previous task failed
-  chatQueues.set(key, next);
+
+  const taskPromise = prev.then(task, task);
+  chatQueues.set(key, taskPromise);
 
   const cleanup = (): void => {
-    if (chatQueues.get(key) === next) {
+    if (chatQueues.get(key) === taskPromise) {
       chatQueues.delete(key);
     }
   };
 
-  next.then(cleanup, cleanup);
+  taskPromise.then(cleanup, cleanup);
 
-  return { status, promise: next };
+  return { status, promise: taskPromise };
 }
 
 /** @internal Test-only: reset all queue and dispatcher state. */

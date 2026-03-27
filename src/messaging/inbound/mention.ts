@@ -19,6 +19,16 @@ export type { MentionInfo } from '../types';
 // Derive helpers (work on MentionInfo[])
 // ---------------------------------------------------------------------------
 
+/**
+ * Detect whether a raw mention entry represents @all / @所有人.
+ *
+ * Feishu @all mentions have `key: "@_all"` and empty ID fields.
+ * We match on `key` as the primary signal (most stable across locales).
+ */
+export function isMentionAll(mention: { key: string }): boolean {
+  return mention.key === '@_all';
+}
+
 /** Whether the bot was @-mentioned. */
 export function mentionedBot(ctx: MessageContext): boolean {
   return ctx.mentions.some((m) => m.isBot);

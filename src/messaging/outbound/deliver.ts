@@ -10,12 +10,13 @@
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import type { FeishuSendResult } from '../types';
+import { createAccountScopedConfig } from '../../core/accounts';
 import { LarkClient } from '../../core/lark-client';
 import { normalizeFeishuTarget, resolveReceiveIdType } from '../../core/targets';
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
-import { uploadAndSendMediaLark } from './media';
 import { formatLarkError } from '../../core/api-error';
 import { larkLogger } from '../../core/lark-logger';
+import { uploadAndSendMediaLark } from './media';
 
 const log = larkLogger('outbound/deliver');
 
@@ -55,15 +56,20 @@ function normalizeAtMentions(text: string): string {
  * Pre-process text for Lark rendering:
  * mention normalisation + table conversion + style optimization.
  */
-function prepareTextForLark(text: string): string {
+function prepareTextForLark(cfg: ClawdbotConfig, text: string, accountId?: string): string {
   let processed = normalizeAtMentions(text);
 
-  // Convert markdown tables to Feishu-compatible format if the runtime
-  // provides a converter.
+  // Convert markdown tables to Feishu-compatible format using per-account
+  // tableMode setting.
   try {
+    const accountScopedCfg = createAccountScopedConfig(cfg, accountId);
     const runtime = LarkClient.runtime;
-    if (runtime?.channel?.text?.convertMarkdownTables) {
-      processed = runtime.channel.text.convertMarkdownTables(processed, 'bullets');
+    if (runtime?.channel?.text?.convertMarkdownTables && runtime.channel.text.resolveMarkdownTableMode) {
+      const tableMode = runtime.channel.text.resolveMarkdownTableMode({
+        cfg: accountScopedCfg,
+        channel: 'feishu',
+      });
+      processed = runtime.channel.text.convertMarkdownTables(processed, tableMode);
     }
   } catch {
     // Runtime not available -- use the text as-is.
@@ -147,7 +153,7 @@ function detectCardJson(text: string): Record<string, unknown> | undefined {
 
   try {
     const parsed: unknown = JSON.parse(trimmed);
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    if (typeof parsed !== 'object' || parsed == null || Array.isArray(parsed)) {
       return undefined;
     }
 
@@ -165,7 +171,7 @@ function detectCardJson(text: string): Record<string, unknown> | undefined {
     if (
       obj.type === 'template' &&
       typeof obj.data === 'object' &&
-      obj.data !== null &&
+      obj.data != null &&
       typeof (obj.data as Record<string, unknown>).template_id === 'string'
     ) {
       return obj;
@@ -175,7 +181,7 @@ function detectCardJson(text: string): Record<string, unknown> | undefined {
     if (
       (obj.msg_type === 'interactive' || obj.type === 'interactive') &&
       typeof obj.card === 'object' &&
-      obj.card !== null
+      obj.card != null
     ) {
       return obj.card as Record<string, unknown>;
     }
@@ -245,7 +251,7 @@ export async function sendTextLark(params: SendTextLarkParams): Promise<FeishuSe
 
   log.info(`sendTextLark: target=${to}, textLength=${text.length}`);
   const client = LarkClient.fromCfg(cfg, accountId).sdk;
-  const processedText = prepareTextForLark(text);
+  const processedText = prepareTextForLark(cfg, text, accountId);
   const content = buildPostContent(processedText);
 
   return sendImMessage({ client, to, content, msgType: 'post', replyToMessageId, replyInThread });
@@ -338,6 +344,7 @@ export async function sendCardLark(params: SendCardLarkParams): Promise<FeishuSe
         `- Do NOT put URLs in img_key — it must be a real image_key from uploadImage.\n` +
         `- Prefer text-only cards (markdown elements) which have 100% success rate.\n` +
         `- If you need images, send them as separate media messages, not inside cards.`,
+      { cause: err },
     );
   }
 }
