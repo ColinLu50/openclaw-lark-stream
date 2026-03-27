@@ -15,7 +15,8 @@
       "Bash(openclaw plugins:*)",
       "Bash(node -e \"const p=require\\(''C:/Users/26996/.openclaw/extensions/openclaw-lark-stream/package.json''\\);console.log\\(p.name, p.version\\)\")",
       "Bash(npx -y @colinlu50/openclaw-lark-stream@2026.3.28 install)",
-      "Bash(openclaw -v)"
+      "Bash(openclaw -v)",
+      "Bash(grep -l onToolStart /c/Users/26996/AppData/Roaming/npm/node_modules/openclaw/dist/*.js)"
     ]
   }
 }

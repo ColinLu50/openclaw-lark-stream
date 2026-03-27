@@ -493,6 +493,10 @@ export class StreamingCardController {
     const toolName = payload.name ?? 'unknown';
     log.debug('onToolStart', { toolName, phase: payload.phase });
 
+    // "update" is fired repeatedly for long-running tools (e.g. exec streaming output).
+    // Only "start" marks a new tool call — ignore updates to avoid duplicate entries.
+    if (payload.phase === 'update') return;
+
     // Commit any pending reasoning block before starting a new tool
     this.commitReasoningEvent();
     this.reasoning.isReasoningPhase = false;
