@@ -12,13 +12,15 @@
 
 - **实时流式输出** — 每个 block 的内容在生成过程中逐步追加到流式卡片
 - **群聊流式输出** — 群聊中也可使用流式输出
-- **推理过程展示** — 推理模型（DeepSeek-R1、Claude 3.7 等）的 think 内容实时流出，完成后折叠为可展开面板
-- **工具调用状态** — agent 调用工具时，卡片顶部实时显示当前工具，完成后折叠为可展开面板
-- **有序事件面板** — 最终卡片按 think → tool → think → tool 的顺序展示折叠面板，完整还原推理过程
+- **推理过程展示** — 推理模型（DeepSeek-R1、Claude 3.7 等）的 think 内容实时流出
+- **工具调用状态** — agent 调用工具时，卡片顶部实时显示当前工具名称
+- **思考过程面板** — 完成后，所有推理块和工具调用按发生顺序折叠进一个「思考过程」可展开面板
+- **Token 用量展示** — 卡片底部默认显示 input/output token 数和 context 使用百分比
 
 ## 📢 News
 
-- **2026.3.27** — 适配 OpenClaw >= 2026.3.22；新增 AskUserQuestion 交互式提问工具；推理块与工具调用面板按发生顺序排列；修复卡片表格超限错误 230099
+- **2026.3.27 v2** — 折叠面板合并为单个「思考过程」；底栏默认显示 token 用量和 context 使用率
+- **2026.3.27 v1** — 适配 OpenClaw >= 2026.3.22；新增 AskUserQuestion 交互式提问工具；推理块与工具调用面板按发生顺序排列；修复卡片表格超限错误 230099
 - **2026.3.23** — 发布第一版，支持实时流式输出和工具调用状态展示（适配 OpenClaw < 2026.3.22，请切换到 `0322` 分支）
 
 ## 📦 安装
@@ -34,6 +36,12 @@
 
 ```bash
 npx -y @colinlu50/openclaw-lark-stream install
+```
+
+已安装后更新：
+
+```bash
+npx -y @colinlu50/openclaw-lark-stream update
 ```
 
 ### 从源码安装（开发用）
@@ -71,15 +79,28 @@ openclaw gateway restart
 
 ### 卡片底栏
 
-默认显示耗时和完成状态，如需关闭：
+底栏各项均可通过 `channels.feishu.footer.*` 独立开关，修改后重启生效：
 
 ```bash
-openclaw config set channels.feishu.footer.elapsed false  # 隐藏耗时
-openclaw config set channels.feishu.footer.status false   # 隐藏完成状态
+openclaw gateway restart
 ```
 
-- **elapsed** — 卡片底栏显示总响应耗时（如 `耗时 3.2s`）
-- **status** — 卡片底栏显示完成状态（`已完成` / `出错` / `已停止`）
+| 配置项 | 默认 | 说明 |
+|--------|------|------|
+| `footer.status` | ✅ 开 | 完成状态（`已完成` / `出错` / `已停止`） |
+| `footer.elapsed` | ✅ 开 | 总响应耗时（如 `耗时 3.2s`） |
+| `footer.tokens` | ✅ 开 | 本次 input / output token 数（如 `↑ 19k ↓ 145`） |
+| `footer.context` | ✅ 开 | context window 使用百分比（如 `1% ctx`） |
+| `footer.cache` | ❌ 关 | 缓存命中详情（如 `缓存 18k/1k (94%)`） |
+| `footer.model` | ❌ 关 | 模型名称（如 `claude-3-7-sonnet`） |
+
+示例 — 关闭 token 展示，开启模型名称：
+
+```bash
+openclaw config set channels.feishu.footer.tokens false
+openclaw config set channels.feishu.footer.model true
+openclaw gateway restart
+```
 
 ## 📄 许可证
 
