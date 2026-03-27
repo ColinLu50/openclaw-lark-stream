@@ -3,11 +3,11 @@
 # OpenClaw 飞书插件 — 流式卡片版
 
 基于官方 [openclaw-lark](https://github.com/larksuite/openclaw-lark) 插件，支持**实时流式输出**和 **Agent 执行过程可视化**。
-<img src="./demo.gif" width="480" />
+<img src="./assets/demo.gif" width="480" />
 
 <sub>▲ 群中真流式输出，并显示全部执行逻辑</sub>
 
-<img src="./demo_footer.png" width="480" />
+<img src="./assets/demo_footer.png" width="480" />
 
 <sub>▲ 卡片底栏：完成状态、响应耗时、token 用量、context 使用率，均可独立开关</sub>
 

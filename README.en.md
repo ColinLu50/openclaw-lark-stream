@@ -3,10 +3,10 @@ English | [中文](./README.md)
 # OpenClaw Lark/Feishu Plugin — Stream Card Edition
 
 Based on the official [openclaw-lark](https://github.com/larksuite/openclaw-lark) plugin, with **real-time streaming output** and **agent execution visibility**.
-<img src="./demo.gif" width="480" />
+<img src="./assets/demo.gif" width="480" />
 <sub>▲ Real streaming in group chats with full execution trace</sub>
 
-<img src="./demo_footer.png" width="480" />
+<img src="./assets/demo_footer.png" width="480" />
 <sub>▲ Card footer: status, elapsed time, token usage, context usage — each toggleable independently</sub>
 
 ## ✨ What's Changed
