@@ -229,23 +229,25 @@ export function formatFooterRuntimeSegments(params: {
   const zhParts: string[] = [];
   const enParts: string[] = [];
 
+  const verbose = footer?.verbose ?? false;
+
   if (footer?.status) {
     if (isError) {
-      zhParts.push('❌');
-      enParts.push('❌');
+      zhParts.push(verbose ? '出错' : '❌');
+      enParts.push(verbose ? 'Error' : '❌');
     } else if (isAborted) {
-      zhParts.push('⏹');
-      enParts.push('⏹');
+      zhParts.push(verbose ? '已停止' : '⏹');
+      enParts.push(verbose ? 'Stopped' : '⏹');
     } else {
-      zhParts.push('✅');
-      enParts.push('✅');
+      zhParts.push(verbose ? '已完成' : '✅');
+      enParts.push(verbose ? 'Completed' : '✅');
     }
   }
 
   if (footer?.elapsed && elapsedMs != null) {
     const d = formatElapsed(elapsedMs);
-    zhParts.push(d);
-    enParts.push(d);
+    zhParts.push(verbose ? `耗时 ${d}` : d);
+    enParts.push(verbose ? `Elapsed ${d}` : d);
   }
 
   if (footer?.tokens && metrics) {
@@ -278,9 +280,16 @@ export function formatFooterRuntimeSegments(params: {
     const total = typeof freshTotal === 'number' ? Math.max(0, freshTotal) : undefined;
     const ctx = typeof metrics.contextTokens === 'number' ? Math.max(0, metrics.contextTokens) : undefined;
     if (total != null && ctx != null) {
+      const totalLabel = compactNumber(total);
+      const ctxLabel = compactNumber(ctx);
       const pct = ctx > 0 ? Math.round((total / ctx) * 100) : 0;
-      zhParts.push(`${pct}% ctx`);
-      enParts.push(`${pct}% ctx`);
+      if (verbose) {
+        zhParts.push(`上下文 ${totalLabel}/${ctxLabel} (${pct}%)`);
+        enParts.push(`Context ${totalLabel}/${ctxLabel} (${pct}%)`);
+      } else {
+        zhParts.push(`${pct}% ctx`);
+        enParts.push(`${pct}% ctx`);
+      }
     }
   }
 

@@ -70,6 +70,8 @@ export interface FeishuToolsConfig {
 
 /** Per-feature toggles for card footer metadata visibility. */
 export interface FeishuFooterConfig {
+  /** Show all metrics with full text labels, and enable cache + model by default. */
+  verbose?: boolean;
   status?: boolean;
   elapsed?: boolean;
   tokens?: boolean;

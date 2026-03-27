@@ -87,35 +87,31 @@ openclaw gateway restart
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `footer.status` | ✅ on | Completion state (`Completed` / `Error` / `Stopped`) |
-| `footer.elapsed` | ✅ on | Total response time (e.g. `Elapsed 3.2s`) |
-| `footer.tokens` | ✅ on | Input / output token counts (e.g. `↑ 19k ↓ 145`) |
-| `footer.context` | ✅ on | Context window usage percentage (e.g. `1% ctx`) |
-| `footer.cache` | ❌ off | Cache hit details (e.g. `Cache 18k/1k (94%)`) |
-| `footer.model` | ❌ off | Model name (e.g. `claude-3-7-sonnet`) |
+| `footer.verbose` | ❌ off | Verbose mode: text labels + enables cache and model by default |
+| `footer.status` | ✅ on | Completion state |
+| `footer.elapsed` | ✅ on | Total response time |
+| `footer.tokens` | ✅ on | Input / output token counts |
+| `footer.context` | ✅ on | Context window usage |
+| `footer.cache` | ❌ off | Cache hit details (on by default in verbose mode) |
+| `footer.model` | ❌ off | Model name (on by default in verbose mode) |
 
-Default footer looks like:
+**Default (compact):**
 
 ```
 ✅ · 8.3s · ↑ 19k ↓ 145 · 1% ctx
 ```
 
-Enable everything:
+**Verbose mode (`footer.verbose true`):**
+
+```
+Completed · Elapsed 8.3s · ↑ 19k ↓ 145 · Cache 18k/1k (94%) · Context 19k/200k (10%) · claude-3-7-sonnet
+```
+
+Enable verbose mode:
 
 ```bash
-openclaw config set channels.feishu.footer.status true
-openclaw config set channels.feishu.footer.elapsed true
-openclaw config set channels.feishu.footer.tokens true
-openclaw config set channels.feishu.footer.context true
-openclaw config set channels.feishu.footer.cache true
-openclaw config set channels.feishu.footer.model true
+openclaw config set channels.feishu.footer.verbose true
 openclaw gateway restart
-```
-
-With all options enabled:
-
-```
-✅ · 8.3s · ↑ 19k ↓ 145 · Cache 18k/1k (94%) · 1% ctx · claude-3-7-sonnet
 ```
 
 Example — hide token counts, show model name:
