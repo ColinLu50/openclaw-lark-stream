@@ -190,7 +190,10 @@ export class StreamingCardController {
       if (sessionApi?.resolveStorePath && sessionApi?.loadSessionStore) {
         const storePath = sessionApi.resolveStorePath(sessionStorePath, { agentId: this.deps.agentId });
         const store = sessionApi.loadSessionStore(storePath, { skipCache: true });
-        const entry = store[key];
+        // sessions.json keys have the format "agent:<agentId>:<sessionKey>".
+        // Try the prefixed key first, fall back to the bare key.
+        const prefixedKey = `agent:${this.deps.agentId}:${key}`;
+        const entry = store[prefixedKey] ?? store[key];
         if (!entry || typeof entry !== 'object') {
           log.debug('footer metrics lookup: session entry missing', {
             sessionKey: this.deps.sessionKey,
@@ -241,7 +244,8 @@ export class StreamingCardController {
         parsed && typeof parsed === 'object' && !Array.isArray(parsed)
           ? (parsed as Record<string, Record<string, unknown>>)
           : {};
-      const entry = store[key];
+      const prefixedKey2 = `agent:${this.deps.agentId}:${key}`;
+      const entry = store[prefixedKey2] ?? store[key];
       if (!entry || typeof entry !== 'object') {
         log.debug('footer metrics lookup: session entry missing', {
           sessionKey: this.deps.sessionKey,
