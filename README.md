@@ -3,6 +3,8 @@
 # OpenClaw 飞书插件 — 流式卡片版
 
 ![demo](./demo.gif)
+![footer](./demo_footer.png)
+<sub>▲ 卡片底栏：完成状态、响应耗时、token 用量、context 使用率，均可独立开关</sub>
 
 基于官方 [openclaw-lark](https://github.com/larksuite/openclaw-lark) 插件，支持**实时流式输出**和 **Agent 执行过程可视化**。
 
@@ -108,7 +110,8 @@ openclaw gateway restart
 | elapsed | `8.3s` | `耗时 8.3s` |
 | context | `1% ctx` | `上下文 19k/200k (10%)` |
 | cache | `94% cache` | `缓存 18k/1k (94%)` |
-| tokens / model | 相同 | 相同 |
+| tokens | `↑ 19k ↓ 145` | `输入 19k 输出 145` |
+| model | 相同 | 相同 |
 
 默认效果：
 
@@ -128,7 +131,7 @@ openclaw gateway restart
 效果：
 
 ```
-已完成 · 耗时 8.3s · ↑ 19k ↓ 145 · 缓存 18k/1k (94%) · 上下文 19k/200k (10%) · claude-3-7-sonnet
+已完成 · 耗时 8.3s · 输入 19k 输出 145 · 缓存 18k/1k (94%) · 上下文 19k/200k (10%) · claude-3-7-sonnet
 ```
 
 示例 — 关闭 token 展示，开启模型名称：

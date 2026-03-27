@@ -168,38 +168,45 @@ export class StreamingCardController {
   }
 
   private async getFooterSessionMetrics(): Promise<FooterSessionMetrics | undefined> {
-    try {
-      // Read sessions.json directly, same as WebUI.
-      // Path: ~/.openclaw/agents/{agentId}/sessions/sessions.json
-      const storePath = path.join(homedir(), '.openclaw', 'agents', this.deps.agentId, 'sessions', 'sessions.json');
+    const storePath = path.join(homedir(), '.openclaw', 'agents', this.deps.agentId, 'sessions', 'sessions.json');
+    const key = this.deps.sessionKey.trim().toLowerCase();
+    const prefixedKey = `agent:${this.deps.agentId}:${key}`;
 
-      const raw = await readFile(storePath, 'utf8');
-      const store = JSON.parse(raw) as Record<string, Record<string, unknown>>;
+    const readMetrics = async (): Promise<FooterSessionMetrics | undefined> => {
+      try {
+        const raw = await readFile(storePath, 'utf8');
+        const store = JSON.parse(raw) as Record<string, Record<string, unknown>>;
+        const entry = store[prefixedKey] ?? store[key];
 
-      // sessions.json keys: "agent:<agentId>:<sessionKey>"
-      const key = this.deps.sessionKey.trim().toLowerCase();
-      const prefixedKey = `agent:${this.deps.agentId}:${key}`;
-      const entry = store[prefixedKey] ?? store[key];
+        if (!entry || typeof entry !== 'object') {
+          log.debug('footer metrics: session entry not found', { prefixedKey, key });
+          return undefined;
+        }
 
-      if (!entry || typeof entry !== 'object') {
-        log.debug('footer metrics: session entry not found', { prefixedKey, key });
+        return {
+          inputTokens: typeof entry.inputTokens === 'number' ? entry.inputTokens : undefined,
+          outputTokens: typeof entry.outputTokens === 'number' ? entry.outputTokens : undefined,
+          cacheRead: typeof entry.cacheRead === 'number' ? entry.cacheRead : undefined,
+          cacheWrite: typeof entry.cacheWrite === 'number' ? entry.cacheWrite : undefined,
+          totalTokens: typeof entry.totalTokens === 'number' ? entry.totalTokens : undefined,
+          totalTokensFresh: typeof entry.totalTokensFresh === 'boolean' ? entry.totalTokensFresh : undefined,
+          contextTokens: typeof entry.contextTokens === 'number' ? entry.contextTokens : undefined,
+          model: typeof entry.model === 'string' ? entry.model : undefined,
+        };
+      } catch (err) {
+        log.warn('footer metrics lookup failed', { error: String(err), sessionKey: this.deps.sessionKey });
         return undefined;
       }
+    };
 
-      return {
-        inputTokens: typeof entry.inputTokens === 'number' ? entry.inputTokens : undefined,
-        outputTokens: typeof entry.outputTokens === 'number' ? entry.outputTokens : undefined,
-        cacheRead: typeof entry.cacheRead === 'number' ? entry.cacheRead : undefined,
-        cacheWrite: typeof entry.cacheWrite === 'number' ? entry.cacheWrite : undefined,
-        totalTokens: typeof entry.totalTokens === 'number' ? entry.totalTokens : undefined,
-        totalTokensFresh: typeof entry.totalTokensFresh === 'boolean' ? entry.totalTokensFresh : undefined,
-        contextTokens: typeof entry.contextTokens === 'number' ? entry.contextTokens : undefined,
-        model: typeof entry.model === 'string' ? entry.model : undefined,
-      };
-    } catch (err) {
-      log.warn('footer metrics lookup failed', { error: String(err), sessionKey: this.deps.sessionKey });
-      return undefined;
-    }
+    // First attempt — may race with OpenClaw's persistRunSessionUsage.
+    const first = await readMetrics();
+    if (first?.inputTokens != null) return first;
+
+    // Retry after a short delay to let OpenClaw finish writing.
+    log.debug('footer metrics: inputTokens missing, retrying after delay', { prefixedKey });
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    return readMetrics();
   }
 
   constructor(deps: StreamingCardDeps) {

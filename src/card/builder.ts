@@ -256,8 +256,13 @@ export function formatFooterRuntimeSegments(params: {
     if (inTokens != null && outTokens != null) {
       const inLabel = compactNumber(inTokens);
       const outLabel = compactNumber(outTokens);
-      zhParts.push(`↑ ${inLabel} ↓ ${outLabel}`);
-      enParts.push(`↑ ${inLabel} ↓ ${outLabel}`);
+      if (verbose) {
+        zhParts.push(`输入 ${inLabel} 输出 ${outLabel}`);
+        enParts.push(`In ${inLabel} Out ${outLabel}`);
+      } else {
+        zhParts.push(`↑ ${inLabel} ↓ ${outLabel}`);
+        enParts.push(`↑ ${inLabel} ↓ ${outLabel}`);
+      }
     }
   }
 
