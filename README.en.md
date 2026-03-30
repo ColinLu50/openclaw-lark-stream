@@ -38,7 +38,10 @@ The official plugin delivers LLM block results all at once after completion. Thi
 Requires [OpenClaw](https://openclaw.ai) and Node.js (>= v22).
 
 > [!WARNING]
-> **OpenClaw 3.28 is not currently supported** due to compatibility issues (support expected before Apr 4). If you've already upgraded to 3.28, please downgrade to **3.24** before installing.
+> **OpenClaw 3.28 is not currently supported** due to compatibility issues (support expected before Apr 4). If you've already upgraded to 3.28, please downgrade to **3.24** before installing:
+> ```bash
+> npm install -g openclaw@2026.3.24
+> ```
 
 The install script automatically detects your OpenClaw version and installs the right plugin:
 - OpenClaw **>= 2026.3.22** → installs the latest version (reasoning streaming, AskUserQuestion, etc.)

@@ -42,7 +42,10 @@
 需要 [OpenClaw](https://openclaw.ai) 和 Node.js（>= v22）。
 
 > [!WARNING]
-> **暂不支持 OpenClaw 3.28**，该版本存在兼容性问题（预计 4.4 前支持）。如已升级到 3.28，请回退到 **3.24** 版本后再安装。
+> **暂不支持 OpenClaw 3.28**，该版本存在兼容性问题（预计 4.4 前支持）。如已升级到 3.28，请回退到 **3.24** 版本后再安装：
+> ```bash
+> npm install -g openclaw@2026.3.24
+> ```
 
 安装脚本会自动检测 OpenClaw 版本并安装对应的插件版本：
 - OpenClaw **>= 2026.3.22** → 自动安装最新版（支持推理流式、AskUserQuestion 等）
