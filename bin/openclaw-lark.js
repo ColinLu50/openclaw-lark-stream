@@ -166,7 +166,6 @@ async function configureBotIfNeeded() {
     connectionMode: "websocket",
     domain,
     streaming: true,
-    defaultAccount: "main",
     replyMode: {
       direct: "streaming",
       group: "streaming",

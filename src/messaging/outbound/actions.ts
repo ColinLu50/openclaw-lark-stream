@@ -16,10 +16,11 @@
 import type {
   ChannelMessageActionAdapter,
   ChannelMessageActionName,
-  ChannelThreadingToolContext,
   OpenClawConfig,
 } from 'openclaw/plugin-sdk';
-import { extractToolSend, jsonResult, readStringParam, readReactionParams } from 'openclaw/plugin-sdk';
+import type { ChannelThreadingToolContext } from 'openclaw/plugin-sdk/channel-contract';
+import { jsonResult, readStringParam, readReactionParams } from 'openclaw/plugin-sdk/param-readers';
+import { extractToolSend } from 'openclaw/plugin-sdk/tool-send';
 
 import { addReactionFeishu, removeReactionFeishu, listReactionsFeishu } from './reactions';
 import { sendTextLark, sendCardLark } from './deliver';
